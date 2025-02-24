@@ -1,0 +1,264 @@
+# -*- coding: utf-8 -*-
+"""plan-and-execute.ipynb"""
+
+# Original file is located at
+#     https://colab.research.google.com/github/langchain-ai/langgraph/blob/main/docs/docs/tutorials/plan-and-execute/plan-and-execute.ipynb
+
+# # Plan-and-Execute
+# %%
+## Setup
+import asyncio
+import io
+import operator
+import os
+from typing import Annotated, List, Tuple, Union
+
+from dotenv import load_dotenv
+from IPython.display import Image, display
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI  # pylint: disable=import-error
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, START, StateGraph
+from langgraph.prebuilt import create_react_agent
+from PIL import Image as PILImage  # pylint: disable=import-error
+from pydantic import BaseModel, Field
+from tavily import TavilyClient  # pylint: disable=import-error
+from typing_extensions import TypedDict
+
+MODEL_NAME = "gpt-4o"
+
+load_dotenv()
+
+
+## Define Tools
+tavily_client = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
+
+
+@tool
+def search(query: str):
+    """Call to surf the web using Tavily."""
+    return tavily_client.search(query)
+
+
+tools = [search]
+
+## Define our Execution Agent
+memory = MemorySaver()
+
+# Choose the LLM that will drive the agent
+llm = ChatOpenAI(model=MODEL_NAME)
+prompt = "You are a helpful assistant."
+agent_executor = create_react_agent(llm, tools, prompt=prompt)
+
+## Define the State
+# First, we will need to track the current plan as a list of strings.
+# Next, we should track previously executed steps as a list of tuples
+# (these tuples will contain the step and then the result)
+# Finally, state to represent the final response as well as the original input.
+
+
+class PlanExecute(TypedDict):
+    """PlanExecute is used to track the current state of the agent"""
+
+    input: str
+    plan: List[str]
+    past_steps: Annotated[List[Tuple], operator.add]
+    response: str
+
+
+## Planning Step
+# Use function calling to create a plan.
+
+
+class Plan(BaseModel):
+    """Plan to follow in future"""
+
+    steps: List[str] = Field(
+        description="different steps to follow, should be in sorted order"
+    )
+
+
+planner_prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            """For the given objective, come up with a simple step by step plan.
+            This plan should involve individual tasks, that if executed correctly will yield the correct answer.
+            Do not add any superfluous steps.
+            The result of the final step should be the final answer.
+            Make sure that each step has all the information needed - do not skip steps.""",
+        ),
+        ("placeholder", "{messages}"),
+    ]
+)
+planner = planner_prompt | ChatOpenAI(
+    model=MODEL_NAME, temperature=0
+).with_structured_output(Plan)
+
+## Re-Plan Step
+# create a step that re-does the plan based on the result of the previous step.
+
+
+class Response(BaseModel):
+    """Response to user."""
+
+    response: str
+
+
+class Act(BaseModel):
+    """Action to perform."""
+
+    action: Union[Response, Plan] = Field(
+        description="Action to perform. If you want to respond to user, use Response. "
+        "If you need to further use tools to get the answer, use Plan."
+    )
+
+
+replanner_prompt = ChatPromptTemplate.from_template(
+    """
+    For the given objective, come up with a simple step by step plan.
+    This plan should involve individual tasks, that if executed correctly
+    will yield the correct answer. Do not add any superfluous steps.
+    The result of the final step should be the final answer.
+    Make sure that each step has all the information needed - do not skip steps.
+
+    Your objective was this:
+    {input}
+
+    Your original plan was this:
+    {plan}
+
+    You have currently done the follow steps:
+    {past_steps}
+
+    Update your plan accordingly.
+    If no more steps are needed and you can return to the user, then respond with that.
+    Otherwise, fill out the plan. Only add steps to the plan that still NEED to be done.
+    Do not return previously done steps as part of the plan, and do not add any steps that
+    are effectively the same as steps that have already been done.
+    """
+)
+
+
+replanner = replanner_prompt | ChatOpenAI(
+    model=MODEL_NAME, temperature=0
+).with_structured_output(Act)
+
+
+async def execute_step(state: PlanExecute):
+    """Execute the first step in the plan and update the state"""
+    plan = state["plan"]
+    plan_str = "\n".join(f"{i+1}. {step}" for i, step in enumerate(plan))
+    task = plan[0]
+    task_formatted = f"""
+        For the following plan:
+        {plan_str}\n\nYou are tasked with executing step {1}, {task}."""
+    agent_response = await agent_executor.ainvoke(
+        {"messages": [("user", task_formatted)]}
+    )
+    return {
+        "past_steps": [(task, agent_response["messages"][-1].content)],
+    }
+
+
+async def plan_step(state: PlanExecute):
+    """Generate a new plan based on the current input"""
+    plan = await planner.ainvoke({"messages": [("user", state["input"])]})
+    return {"plan": plan.steps}
+
+
+async def replan_step(state: PlanExecute):
+    """Replan based on the current state"""
+    output = await replanner.ainvoke(state)
+    if isinstance(output.action, Response):
+        print(f"Response : {output.action.response}")
+        return {"response": output.action.response}
+    else:
+        print("REPLAN")
+        for task in output.action.steps:
+            print(f"- {task}")
+        return {"plan": output.action.steps}
+
+
+def should_end(state: PlanExecute):
+    """Check if the workflow should end"""
+    if "response" in state and state["response"]:
+        return END
+    else:
+        return "agent"
+
+
+workflow = StateGraph(PlanExecute)
+
+# Add the plan node
+workflow.add_node("planner", plan_step)
+
+# Add the execution step
+workflow.add_node("agent", execute_step)
+
+# Add a replan node
+workflow.add_node("replan", replan_step)
+
+workflow.add_edge(START, "planner")
+
+# From plan we go to agent
+workflow.add_edge("planner", "agent")
+
+# From agent, we replan
+workflow.add_edge("agent", "replan")
+
+workflow.add_conditional_edges(
+    "replan",
+    # Next, we pass in the function that will determine which node is called next.
+    should_end,
+    ["agent", END],
+)
+
+# Finally, we compile it!
+# This compiles it into a LangChain Runnable,
+# meaning you can use it as you would any other runnable
+app = workflow.compile()
+
+# for notebook, show graph
+display(Image(app.get_graph(xray=True).draw_mermaid_png()))
+
+config = {"recursion_limit": 50}
+inputs = {
+    "input": "Get me a list of the names of people who have been prominent in AI news this week"
+}
+
+
+async def main():
+    """Run the workflow."""
+    async for event in app.astream(inputs, config=config):
+        for k, v in event.items():
+            if k != "__end__":
+                if "plan" in v:
+                    print("PLAN:")
+                    for item in v["plan"]:
+                        print(f"  - {item}")
+
+
+def show_graph():
+    """Save  graph flowchart."""
+    graph = app.get_graph(xray=True)
+    print(graph.draw_ascii())
+    img_data = graph.draw_mermaid_png()
+    img = PILImage.open(io.BytesIO(img_data))
+    img.save("graph.png")
+
+
+try:
+    # Check if running in a Jupyter Notebook
+    if get_ipython() is not None:
+        # Notebook: Display the image
+        display(Image(app.get_graph(xray=True).draw_mermaid_png()))
+    else:
+        # Script: Save the image
+        show_graph()
+        asyncio.run(main())
+except NameError:
+    # Not in an IPython environment (definitely a script)
+    show_graph()
+    asyncio.run(main())
