@@ -68,6 +68,7 @@ class PlanExecute(TypedDict):
     plan: List[str]
     past_steps: Annotated[List[Tuple], operator.add]
     response: str
+    goal_assessment_feedback: str
 
 
 ## Planning Step
@@ -137,6 +138,9 @@ replanner_prompt = ChatPromptTemplate.from_template(
     You have currently done the follow steps:
     {past_steps}
 
+    Take account of the feedback provided:
+    {goal_assessment_feedback_section}
+
     Update your plan accordingly.
     If no more steps are needed and you can return to the user, then respond with that.
     Otherwise, fill out the plan. Only add steps to the plan that still NEED to be done.
@@ -178,7 +182,19 @@ async def plan_step(state: PlanExecute):
 
 async def replan_step(state: PlanExecute):
     """Replan based on the current state"""
-    output = await replanner.ainvoke(state)
+    # Prepare the input for the replanner
+    replanner_input = state.copy()
+    
+    # Format the goal assessment feedback if it exists
+    if "goal_assessment_feedback" in state and state["goal_assessment_feedback"]:
+        replanner_input["goal_assessment_feedback_section"] = f"""
+Goal Assessment Feedback:
+{state["goal_assessment_feedback"]}
+"""
+    else:
+        replanner_input["goal_assessment_feedback_section"] = ""
+    
+    output = await replanner.ainvoke(replanner_input)
     if isinstance(output.action, Response):
         print(f"Response : {output.action.response}")
         return {"response": output.action.response}
@@ -283,7 +299,8 @@ async def assess_goal(state: PlanExecute):
         return {"response": json.dumps(assessment.json_output)}
     else:
         print(f"GOAL NOT SATISFIED: {assessment.final_response}")
-        return {}
+        # Return the assessment feedback to be used by the replanner
+        return {"goal_assessment_feedback": assessment.final_response}
 
 
 def should_continue_plan(state: PlanExecute):
@@ -364,6 +381,7 @@ async def main():
     """Run the workflow."""
     final_result = ""
     goal_assessment_result = None
+    goal_assessment_feedback = None
     async for event in app.astream(inputs, config=config):
         for k, v in event.items():
             if k != "__end__" and v is not None:
@@ -377,6 +395,9 @@ async def main():
                         final_result += result + "\n"
                 if "response" in v:
                     goal_assessment_result = v["response"]
+                if "goal_assessment_feedback" in v:
+                    goal_assessment_feedback = v["goal_assessment_feedback"]
+                    print(f"\nGOAL ASSESSMENT FEEDBACK: {goal_assessment_feedback}")
     print("DONE: " + final_result)
     if goal_assessment_result:
         print("\nGOAL ASSESSMENT RESULT:")
