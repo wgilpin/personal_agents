@@ -13,12 +13,11 @@ import io
 import json
 import operator
 import os
-import sys
-from typing import Annotated, List, Tuple, Union, Dict, Any
+from typing import Annotated, List, Tuple, Union, Dict
 
 from dotenv import load_dotenv
 from IPython.display import Image, display
-from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI  # pylint: disable=import-error
 from langgraph.checkpoint.memory import MemorySaver
@@ -29,6 +28,7 @@ from pydantic import BaseModel, Field
 from tavily import TavilyClient  # pylint: disable=import-error
 from typing_extensions import TypedDict
 
+# We need to use an LLM that supports function calling.
 MODEL_NAME = "gpt-4o"
 
 load_dotenv()
@@ -37,29 +37,27 @@ load_dotenv()
 ## Define Tools
 tavily_client = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
 
-
 @tool
 def search(query: str):
     """Call to surf the web using Tavily."""
     return tavily_client.search(query)
 
-
 tools = [search]
 
 ## Define our Execution Agent
+# maintain conversational memory in RAM
 memory = MemorySaver()
 
 # Choose the LLM that will drive the agent
 llm = ChatOpenAI(model=MODEL_NAME)
-prompt = "You are a helpful assistant."
-agent_executor = create_react_agent(llm, tools, prompt=prompt)
+PROMPT = "You are a helpful assistant."
+agent_executor = create_react_agent(llm, tools, prompt=PROMPT)
 
 ## Define the State
 # First, we will need to track the current plan as a list of strings.
 # Next, we should track previously executed steps as a list of tuples
 # (these tuples will contain the step and then the result)
 # Finally, state to represent the final response as well as the original input.
-
 
 class PlanExecute(TypedDict):
     """PlanExecute is used to track the current state of the agent"""
@@ -74,7 +72,6 @@ class PlanExecute(TypedDict):
 ## Planning Step
 # Use function calling to create a plan.
 
-
 class Plan(BaseModel):
     """Plan to follow in future"""
 
@@ -88,7 +85,8 @@ planner_prompt = ChatPromptTemplate.from_messages(
         (
             "system",
             """For the given objective, come up with a simple step by step plan.
-            This plan should involve individual tasks, that if executed correctly will yield the correct answer.
+            This plan should involve individual tasks, that if executed correctly will
+            yield the correct answer.
             The plan should use trhe supplied tools when appropriate. The tools are """
             + ", ".join([f"{tool.name}: {tool.description}" for tool in tools])
             + """Do not add any superfluous steps.
@@ -104,7 +102,6 @@ planner = planner_prompt | ChatOpenAI(
 
 ## Re-Plan Step
 # create a step that re-does the plan based on the result of the previous step.
-
 
 class Response(BaseModel):
     """Response to user."""
@@ -157,6 +154,8 @@ replanner = replanner_prompt | ChatOpenAI(
 
 async def execute_step(state: PlanExecute):
     """Execute the first step in the plan and update the state"""
+    # Steps is a stack and we execute the top item always,
+    # then afterwards we pop the first step to past_steps.
     plan = state["plan"]
     plan_str = "\n".join(f"{i+1}. {step}" for i, step in enumerate(plan))
     task = plan[0]
@@ -166,7 +165,7 @@ async def execute_step(state: PlanExecute):
     agent_response = await agent_executor.ainvoke(
         {"messages": [("user", task_formatted)]}
     )
-    # Remove the executed step from the plan
+    # Pop the executed step from the plan onto past_steps
     remaining_plan = plan[1:] if len(plan) > 1 else []
     return {
         "past_steps": [(task, agent_response["messages"][-1].content)],
@@ -184,16 +183,14 @@ async def replan_step(state: PlanExecute):
     """Replan based on the current state"""
     # Prepare the input for the replanner
     replanner_input = state.copy()
-    
+
     # Format the goal assessment feedback if it exists
     if "goal_assessment_feedback" in state and state["goal_assessment_feedback"]:
-        replanner_input["goal_assessment_feedback_section"] = f"""
-Goal Assessment Feedback:
-{state["goal_assessment_feedback"]}
-"""
+        replanner_input["goal_assessment_feedback_section"] =\
+            f"Goal Assessment Feedback: {state["goal_assessment_feedback"]}"
     else:
         replanner_input["goal_assessment_feedback_section"] = ""
-    
+
     output = await replanner.ainvoke(replanner_input)
     if isinstance(output.action, Response):
         print(f"Response : {output.action.response}")
@@ -206,7 +203,7 @@ Goal Assessment Feedback:
 
 
 # Create a very simple prompt template with only the variables we know we have
-goal_assessor_system_template = """
+GOAL_ASSESSOR_SYSTEM_TEMPLATE = """
 You are a goal assessment expert. Your job is to determine if the user's original goal has been satisfied 
 based on the work that has been done so far.
 
@@ -220,7 +217,7 @@ For example, if the goal was "Get me a list of AI researchers", your json_output
 If the goal was "Explain what AI is", your json_output should be a json object with a single key & value. The key is  "response_text", the value is your answer as a text string.
 """
 
-goal_assessor_user_template = """
+GOAL_ASSESSOR_USER_TEMPLATE = """
 Original goal: {input}
 
 Original plan: {plan}
@@ -234,7 +231,7 @@ If no, explain why the goal hasn't been satisfied yet and what still needs to be
 
 # Create a simple ChatPromptTemplate with separate system and user messages
 goal_assessor_prompt = ChatPromptTemplate.from_messages(
-    [("system", goal_assessor_system_template), ("human", goal_assessor_user_template)]
+    [("system", GOAL_ASSESSOR_SYSTEM_TEMPLATE), ("human", GOAL_ASSESSOR_USER_TEMPLATE)]
 )
 
 
@@ -305,6 +302,7 @@ async def assess_goal(state: PlanExecute):
 
 def should_continue_plan(state: PlanExecute):
     """Check if there are more steps in the plan to execute"""
+    # Conditional Edge. return the next node to execute
     if state["plan"]:
         return "agent"
     else:
@@ -313,6 +311,7 @@ def should_continue_plan(state: PlanExecute):
 
 def should_end(state: PlanExecute):
     """Check if the workflow should end"""
+    # Conditional Edge. return the next node to execute
     if "response" in state and state["response"]:
         return END
     else:
@@ -321,11 +320,14 @@ def should_end(state: PlanExecute):
 
 def route_after_assessment(state: PlanExecute):
     """Determine next step after goal assessment"""
+    # Conditional Edge. return the next node to execute
     if "response" in state and state["response"]:
         return END
     else:
         return "replan"
 
+
+## Build the graph
 
 workflow = StateGraph(PlanExecute)
 
@@ -373,7 +375,9 @@ app = workflow.compile()
 
 config = {"recursion_limit": 50}
 inputs = {
-    "input": "Get me a list of the names of people who have been prominent in AI news this week, along with why they are in the news"
+    "input": """
+            Get me a list of the names of people who have been prominent in AI news
+            this week, along with why they are in the news"""
 }
 
 
@@ -386,20 +390,25 @@ async def main():
         for k, v in event.items():
             if k != "__end__" and v is not None:
                 if "plan" in v:
+                    # A plan has been created
                     print("PLAN:")
                     for item in v["plan"]:
                         print(f"  - {item}")
                 if "past_steps" in v:
+                    # In plan execution, steps are moved to past_steps as they are completed
                     for step, result in v["past_steps"]:
                         print(f"EXECUTED: {step}")
                         final_result += result + "\n"
                 if "response" in v:
+                    # The model response
                     goal_assessment_result = v["response"]
                 if "goal_assessment_feedback" in v:
+                    # if the response was rejected, feedback is given as to why
                     goal_assessment_feedback = v["goal_assessment_feedback"]
                     print(f"\nGOAL ASSESSMENT FEEDBACK: {goal_assessment_feedback}")
     print("DONE: " + final_result)
     if goal_assessment_result:
+        # the final json result of the model
         print("\nGOAL ASSESSMENT RESULT:")
         print(goal_assessment_result)
 
