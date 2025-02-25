@@ -429,15 +429,13 @@ def parse_args():
     return parser.parse_args()
 
 
-# Check if running in a Jupyter Notebook
-get_ipython = globals().get("get_ipython", None)
-args = parse_args()
-
-if get_ipython is not None:
-    # Notebook: Always display the image
-    display(Image(app.get_graph(xray=True).draw_mermaid_png()))
-else:
-    # Script: Save the image only if --flowchart flag is provided
+# Only run the main function if this script is executed directly, not when imported
+if __name__ == "__main__":
+    args = parse_args()
+    
+    # Save the image only if --flowchart flag is provided
     if args.flowchart:
         show_graph()
+    
+    # Run the main workflow
     asyncio.run(main())
