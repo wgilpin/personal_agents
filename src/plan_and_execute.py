@@ -9,13 +9,14 @@
 ## Setup
 import asyncio
 import io
+import json
 import operator
 import os
-from typing import Annotated, List, Tuple, Union
+from typing import Annotated, List, Tuple, Union, Dict, Any
 
 from dotenv import load_dotenv
 from IPython.display import Image, display
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI  # pylint: disable=import-error
 from langgraph.checkpoint.memory import MemorySaver
@@ -85,9 +86,9 @@ planner_prompt = ChatPromptTemplate.from_messages(
             "system",
             """For the given objective, come up with a simple step by step plan.
             This plan should involve individual tasks, that if executed correctly will yield the correct answer.
-            The plan should use trhe supplied tools when appropriate. The tools are """ +
-            ", ".join([f'{tool.name}: {tool.description}' for tool in tools]) +
-            """Do not add any superfluous steps.
+            The plan should use trhe supplied tools when appropriate. The tools are """
+            + ", ".join([f"{tool.name}: {tool.description}" for tool in tools])
+            + """Do not add any superfluous steps.
             The result of the final step should be the final answer.
             Make sure that each step has all the information needed - do not skip steps.""",
         ),
@@ -186,12 +187,110 @@ async def replan_step(state: PlanExecute):
         return {"plan": output.action.steps}
 
 
+# Create a very simple prompt template with only the variables we know we have
+goal_assessor_system_template = """
+You are a goal assessment expert. Your job is to determine if the user's original goal has been satisfied 
+based on the work that has been done so far.
+
+IMPORTANT: Analyze if the goal is asking for a list or text:
+- If the goal is asking for a list (e.g., "list of people", "list of items", etc.), format your output as a JSON list.
+- If the goal is asking for text (e.g., explanation, description, etc.), format your output as a JSON object with one entry.
+
+For example, if the goal was "Get me a list of AI researchers", your json_output should be a list like:
+["Geoffrey Hinton", "Yann LeCun", "Yoshua Bengio"]
+
+If the goal was "Explain what AI is", your json_output should be a json object with a single key & value. The key is  "response_text", the value is your answer as a text string.
+"""
+
+goal_assessor_user_template = """
+Original goal: {input}
+
+Original plan: {plan}
+
+Steps completed: {past_steps}
+
+Based on the above information, has the original goal been fully satisfied? 
+If yes, provide a final response to the user that addresses their original goal.
+If no, explain why the goal hasn't been satisfied yet and what still needs to be done.
+"""
+
+# Create a simple ChatPromptTemplate with separate system and user messages
+goal_assessor_prompt = ChatPromptTemplate.from_messages(
+    [("system", goal_assessor_system_template), ("human", goal_assessor_user_template)]
+)
+
+
+class GoalAssessment(BaseModel):
+    """Assessment of whether the goal has been satisfied"""
+
+    is_satisfied: bool = Field(description="Whether the goal has been satisfied")
+    final_response: str = Field(
+        description="Final response to the user if goal is satisfied, or explanation of what's missing if not"
+    )
+    is_list_output: bool = Field(
+        description="Whether the output should be a list (true) or a text object (false)"
+    )
+    json_output: Union[List[str], Dict[str, str]] = Field(
+        description="The JSON output, either a list of strings or an object with one entry"
+    )
+
+
+goal_assessor = goal_assessor_prompt | ChatOpenAI(
+    model=MODEL_NAME, temperature=0
+).with_structured_output(GoalAssessment, method="function_calling")
+
+
+async def assess_goal(state: PlanExecute):
+    """Assess if the goal has been satisfied based on the completed steps"""
+    print("Assess Goal:")
+    # Create a string representation of the plan for the prompt
+    plan_str = "\n".join(
+        f"{i+1}. {step}" for i, step in enumerate(state.get("plan", []))
+    )
+
+    # Create a string representation of past steps
+    past_steps_str = ""
+    for step, result in state.get("past_steps", []):
+        past_steps_str += f"Step: {step}\nResult: {result}\n\n"
+
+    assessment = await goal_assessor.ainvoke(
+        {"input": state["input"], "plan": plan_str, "past_steps": past_steps_str}
+    )
+
+    if assessment.is_satisfied:
+        print("Satisfied!")
+        # Format the response as JSON based on whether it should be a list or text object
+        if assessment.is_list_output:
+            # Ensure we have a JSON list
+            json_output = (
+                assessment.json_output
+                if isinstance(assessment.json_output, list)
+                else []
+            )
+            print(f"JSON LIST OUTPUT: {json.dumps(json_output)}")
+        else:
+            # Ensure we have a JSON object with one entry
+            json_output = (
+                assessment.json_output
+                if isinstance(assessment.json_output, dict)
+                else {"text": assessment.final_response}
+            )
+            print(f"JSON OBJECT OUTPUT: {json.dumps(json_output)}")
+
+        # Return the JSON string as the response
+        return {"response": json.dumps(assessment.json_output)}
+    else:
+        print(f"GOAL NOT SATISFIED: {assessment.final_response}")
+        return {}
+
+
 def should_continue_plan(state: PlanExecute):
     """Check if there are more steps in the plan to execute"""
     if state["plan"]:
         return "agent"
     else:
-        return "replan"
+        return "goal_assessor"
+
 
 def should_end(state: PlanExecute):
     """Check if the workflow should end"""
@@ -201,6 +300,14 @@ def should_end(state: PlanExecute):
         return "agent"
 
 
+def route_after_assessment(state: PlanExecute):
+    """Determine next step after goal assessment"""
+    if "response" in state and state["response"]:
+        return END
+    else:
+        return "replan"
+
+
 workflow = StateGraph(PlanExecute)
 
 # Add the plan node
@@ -208,6 +315,9 @@ workflow.add_node("planner", plan_step)
 
 # Add the execution step
 workflow.add_node("agent", execute_step)
+
+# Add the goal assessment node
+workflow.add_node("goal_assessor", assess_goal)
 
 # Add a replan node
 workflow.add_node("replan", replan_step)
@@ -221,12 +331,18 @@ workflow.add_edge("planner", "agent")
 workflow.add_conditional_edges(
     "agent",
     should_continue_plan,
-    ["agent", "replan"],
+    ["agent", "goal_assessor"],
+)
+
+# From goal assessor, we either end or replan
+workflow.add_conditional_edges(
+    "goal_assessor",
+    route_after_assessment,
+    ["replan", END],
 )
 
 workflow.add_conditional_edges(
     "replan",
-    # Next, we pass in the function that will determine which node is called next.
     should_end,
     ["agent", END],
 )
@@ -250,7 +366,7 @@ async def main():
     final_result = ""
     async for event in app.astream(inputs, config=config):
         for k, v in event.items():
-            if k != "__end__":
+            if k != "__end__" and v is not None:
                 if "plan" in v:
                     print("PLAN:")
                     for item in v["plan"]:
@@ -259,7 +375,7 @@ async def main():
                     for step, result in v["past_steps"]:
                         print(f"EXECUTED: {step}")
                         final_result += result + "\n"
-    print("DONE: "+final_result)
+    print("DONE: " + final_result)
 
 
 def show_graph():
@@ -271,16 +387,12 @@ def show_graph():
     img.save("graph.png")
 
 
-try:
-    # Check if running in a Jupyter Notebook
-    if get_ipython() is not None:
-        # Notebook: Display the image
-        display(Image(app.get_graph(xray=True).draw_mermaid_png()))
-    else:
-        # Script: Save the image
-        show_graph()
-        asyncio.run(main())
-except NameError:
-    # Not in an IPython environment (definitely a script)
+# Check if running in a Jupyter Notebook
+get_ipython = globals().get("get_ipython", None)
+if get_ipython is not None:
+    # Notebook: Display the image
+    display(Image(app.get_graph(xray=True).draw_mermaid_png()))
+else:
+    # Script: Save the image
     show_graph()
     asyncio.run(main())

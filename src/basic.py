@@ -2,7 +2,7 @@
 import operator
 import os
 import json
-from typing import Annotated, List, Tuple, Optional, Dict, TypedDict
+from typing import Annotated, List, Tuple, Optional, Dict, TypedDict, Union, Any
 
 from dotenv import load_dotenv
 from langchain_anthropic import ChatAnthropic
@@ -35,16 +35,22 @@ class Plan(BaseModel):
 class Response(Plan):
     """Response to a task."""
 
-    final_answer: str | None = None
-    final_answer_json: dict | None = None
+    final_answer: Optional[str] = None
+    final_answer_json: Optional[Union[List[Any], Dict[str, Any]]] = None
+    is_list_output: bool = Field(
+        default=False, 
+        description="Whether the output should be a list (true) or a text object (false)"
+    )
 
 
 class AgentState(TypedDict):
     """ The state that persists across the task """
-    goal: str | None = None
-    plan: Plan | None = None
-    final_answer: str | None = None
-    final_answer_json: dict | None = None
+    messages: List[Any]  # Added messages field
+    goal: Optional[str]
+    plan: Optional[Plan]
+    final_answer: Optional[str]
+    final_answer_json: Optional[Union[List[Any], Dict[str, Any]]]
+    is_list_output: bool
 
 
 class AgentAction(BaseModel):
@@ -135,34 +141,77 @@ def update_plan(state: AgentState):
         return {"plan": Plan (steps=[])}
     else:
         # return the plan but remove the first item from the list
-        print(f"update_plan: Removing first step from the plan: {state["plan"].steps[0]}")
+        print(f"update_plan: Removing first step from the plan: {state['plan'].steps[0]}")
         remaining_plan_steps = state["plan"].steps[1:]
         past_steps = state["plan"].past_steps + [(state["plan"].steps[0],)]
         return {**state, "plan": Plan(steps=remaining_plan_steps, past_steps=past_steps)}
 
 def make_final_response(state: AgentState):
     """Make a final_answer as structured output."""
-    tool_output = state["messages"][-2]  # Access second to last message
+    # Determine if the goal is asking for a list or text
+    goal = state.get("goal", "")
+    is_list_output = any(keyword in goal.lower() for keyword in ["list", "names", "people", "items"])
+    
+    # Extract data from tool output if available
+    tool_output = state["messages"][-2] if len(state["messages"]) > 1 else None
     articles = []
     if isinstance(tool_output, ToolMessage):
         tool_call_output_str = tool_output.content
         if tool_call_output_str:
-            tool_call_output = json.loads(tool_call_output_str)
-            if "results" in tool_call_output:
-                articles = tool_call_output["results"]
+            try:
+                tool_call_output = json.loads(tool_call_output_str)
+                if "results" in tool_call_output:
+                    articles = tool_call_output["results"]
+            except json.JSONDecodeError:
+                # Handle case where tool output is not valid JSON
+                pass
 
-    final_answer_json = articles if articles else None
-
-    if final_answer_json:  # Use final_answer_json here
-        final_answer_str = "Here are the latest AI news articles:\n"
-        for i, article in enumerate(final_answer_json):  # Use final_answer_json here
-            final_answer_str += f"{i+1}. {article['title']}: {article['url']}\n"
+    # Format the response based on whether it should be a list or text
+    if is_list_output:
+        # If it's a list output (e.g., list of people, items)
+        if articles:
+            # Extract names or relevant items from articles
+            names = []
+            for article in articles:
+                # Extract names from title or content if available
+                title = article.get('title', '')
+                if 'people' in names:
+                    # This is a simplistic approach - in a real system, you'd use NER
+                    # to extract actual person names from the content
+                    names.append(title.split()[0] if title else "Unknown")
+                else:
+                    names.append(title if title else "Unknown")
+            
+            final_answer_json = names
+            final_answer_str = "Here are the names from the AI news:\n" + "\n".join(f"- {name}" for name in names)
+        else:
+            final_answer_json = []
+            final_answer_str = "No relevant information found in the search results."
     else:
-        final_answer_str = "No AI news articles found in the search results."
+        # If it's a text output (e.g., explanation, description)
+        if articles:
+            # Combine article information into a text summary
+            summary = "Based on the search results:\n\n"
+            for article in articles:
+                title = article.get('title', 'Untitled')
+                summary += f"- {title}\n"
+            
+            final_answer_json = {"text": summary}
+            final_answer_str = summary
+        else:
+            final_answer_json = {"text": "No relevant information found in the search results."}
+            final_answer_str = "No relevant information found in the search results."
+
+    # Print the formatted output
+    if is_list_output:
+        print(f"JSON LIST OUTPUT: {json.dumps(final_answer_json)}")
+    else:
+        print(f"JSON OBJECT OUTPUT: {json.dumps(final_answer_json)}")
 
     response = {
         "final_answer": final_answer_str,
         "final_answer_json": final_answer_json,
+        "is_list_output": is_list_output
     }
     return response
 
