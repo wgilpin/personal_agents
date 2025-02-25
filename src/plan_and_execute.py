@@ -85,7 +85,9 @@ planner_prompt = ChatPromptTemplate.from_messages(
             "system",
             """For the given objective, come up with a simple step by step plan.
             This plan should involve individual tasks, that if executed correctly will yield the correct answer.
-            Do not add any superfluous steps.
+            The plan should use trhe supplied tools when appropriate. The tools are """ +
+            ", ".join([f'{tool.name}: {tool.description}' for tool in tools]) +
+            """Do not add any superfluous steps.
             The result of the final step should be the final answer.
             Make sure that each step has all the information needed - do not skip steps.""",
         ),
@@ -157,8 +159,11 @@ async def execute_step(state: PlanExecute):
     agent_response = await agent_executor.ainvoke(
         {"messages": [("user", task_formatted)]}
     )
+    # Remove the executed step from the plan
+    remaining_plan = plan[1:] if len(plan) > 1 else []
     return {
         "past_steps": [(task, agent_response["messages"][-1].content)],
+        "plan": remaining_plan,
     }
 
 
@@ -180,6 +185,13 @@ async def replan_step(state: PlanExecute):
             print(f"- {task}")
         return {"plan": output.action.steps}
 
+
+def should_continue_plan(state: PlanExecute):
+    """Check if there are more steps in the plan to execute"""
+    if state["plan"]:
+        return "agent"
+    else:
+        return "replan"
 
 def should_end(state: PlanExecute):
     """Check if the workflow should end"""
@@ -205,8 +217,12 @@ workflow.add_edge(START, "planner")
 # From plan we go to agent
 workflow.add_edge("planner", "agent")
 
-# From agent, we replan
-workflow.add_edge("agent", "replan")
+# From agent, we check if there are more steps in the plan
+workflow.add_conditional_edges(
+    "agent",
+    should_continue_plan,
+    ["agent", "replan"],
+)
 
 workflow.add_conditional_edges(
     "replan",
@@ -231,6 +247,7 @@ inputs = {
 
 async def main():
     """Run the workflow."""
+    final_result = ""
     async for event in app.astream(inputs, config=config):
         for k, v in event.items():
             if k != "__end__":
@@ -238,6 +255,11 @@ async def main():
                     print("PLAN:")
                     for item in v["plan"]:
                         print(f"  - {item}")
+                if "past_steps" in v:
+                    for step, result in v["past_steps"]:
+                        print(f"EXECUTED: {step}")
+                        final_result += result + "\n"
+    print("DONE: "+final_result)
 
 
 def show_graph():
