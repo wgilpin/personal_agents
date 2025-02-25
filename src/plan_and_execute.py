@@ -8,10 +8,12 @@
 # %%
 ## Setup
 import asyncio
+import argparse
 import io
 import json
 import operator
 import os
+import sys
 from typing import Annotated, List, Tuple, Union, Dict, Any
 
 from dotenv import load_dotenv
@@ -352,9 +354,6 @@ workflow.add_conditional_edges(
 # meaning you can use it as you would any other runnable
 app = workflow.compile()
 
-# for notebook, show graph
-display(Image(app.get_graph(xray=True).draw_mermaid_png()))
-
 config = {"recursion_limit": 50}
 inputs = {
     "input": "Get me a list of the names of people who have been prominent in AI news this week, along with why they are in the news"
@@ -385,7 +384,7 @@ async def main():
 
 
 def show_graph():
-    """Save  graph flowchart."""
+    """Save graph flowchart."""
     graph = app.get_graph(xray=True)
     print(graph.draw_ascii())
     img_data = graph.draw_mermaid_png()
@@ -393,12 +392,23 @@ def show_graph():
     img.save("graph.png")
 
 
+# Parse command line arguments
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="Plan and Execute workflow")
+    parser.add_argument("--flowchart", action="store_true", help="Generate flowchart image")
+    return parser.parse_args()
+
+
 # Check if running in a Jupyter Notebook
 get_ipython = globals().get("get_ipython", None)
+args = parse_args()
+
 if get_ipython is not None:
-    # Notebook: Display the image
+    # Notebook: Always display the image
     display(Image(app.get_graph(xray=True).draw_mermaid_png()))
 else:
-    # Script: Save the image
-    show_graph()
+    # Script: Save the image only if --flowchart flag is provided
+    if args.flowchart:
+        show_graph()
     asyncio.run(main())
