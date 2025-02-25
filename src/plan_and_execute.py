@@ -257,7 +257,6 @@ goal_assessor = goal_assessor_prompt | ChatOpenAI(
 
 async def assess_goal(state: PlanExecute):
     """Assess if the goal has been satisfied based on the completed steps"""
-    print("Assess Goal:")
     # Create a string representation of the plan for the prompt
     plan_str = "\n".join(
         f"{i+1}. {step}" for i, step in enumerate(state.get("plan", []))
@@ -273,7 +272,7 @@ async def assess_goal(state: PlanExecute):
     )
 
     if assessment.is_satisfied:
-        print("Satisfied!")
+        print("Goal satisfied!")
         # Format the response as JSON based on whether it should be a list or text object
         if assessment.is_list_output:
             # Ensure we have a JSON list
@@ -389,16 +388,16 @@ async def main():
     async for event in app.astream(inputs, config=config):
         for k, v in event.items():
             if k != "__end__" and v is not None:
-                if "plan" in v:
-                    # A plan has been created
-                    print("PLAN:")
-                    for item in v["plan"]:
-                        print(f"  - {item}")
                 if "past_steps" in v:
                     # In plan execution, steps are moved to past_steps as they are completed
                     for step, result in v["past_steps"]:
                         print(f"EXECUTED: {step}")
                         final_result += result + "\n"
+                if "plan" in v:
+                    # A plan has been created
+                    print("PLAN:")
+                    for idx, item in enumerate(v["plan"]):
+                        print(f"  {idx+1}. {item}")
                 if "response" in v:
                     # The model response
                     goal_assessment_result = v["response"]
