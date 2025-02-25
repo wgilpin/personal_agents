@@ -357,13 +357,14 @@ display(Image(app.get_graph(xray=True).draw_mermaid_png()))
 
 config = {"recursion_limit": 50}
 inputs = {
-    "input": "Get me a list of the names of people who have been prominent in AI news this week"
+    "input": "Get me a list of the names of people who have been prominent in AI news this week, along with why they are in the news"
 }
 
 
 async def main():
     """Run the workflow."""
     final_result = ""
+    goal_assessment_result = None
     async for event in app.astream(inputs, config=config):
         for k, v in event.items():
             if k != "__end__" and v is not None:
@@ -375,7 +376,12 @@ async def main():
                     for step, result in v["past_steps"]:
                         print(f"EXECUTED: {step}")
                         final_result += result + "\n"
+                if "response" in v:
+                    goal_assessment_result = v["response"]
     print("DONE: " + final_result)
+    if goal_assessment_result:
+        print("\nGOAL ASSESSMENT RESULT:")
+        print(goal_assessment_result)
 
 
 def show_graph():
