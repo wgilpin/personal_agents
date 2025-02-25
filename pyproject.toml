@@ -17,6 +17,8 @@ dependencies = [
     "langchain-openai>=0.3.6",
     "pillow>=11.1.0",
     "grandalf>=0.8",
+    "fastapi>=0.115.8",
+    "uvicorn>=0.34.0",
 ]
 
 [tool.setuptools]
