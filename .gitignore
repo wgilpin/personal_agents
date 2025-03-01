@@ -13,3 +13,4 @@ graph.png
 
 # secrets
 .env
+/src/flowcharts/current_flowchart.yaml

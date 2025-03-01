@@ -5,11 +5,16 @@
 import json
 import os
 import yaml
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
-import uvicorn # pylint: disable=import-error
+import uvicorn  # pylint: disable=import-error
 
-from fastapi import FastAPI, HTTPException, File, UploadFile # pylint: disable=import-error
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    File,
+    UploadFile,
+)  # pylint: disable=import-error
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -62,29 +67,65 @@ async def execute_prompt(prompt_input: PromptInput) -> Dict[str, Any]:
 
         # Initialize goal_assessment_result
         goal_assessment_result = None
+        final_result = ""
 
-        # Execute the workflow
-        async for event in app.astream(inputs, config=config):
-            for k, v in event.items():
-                if k != "__end__" and v is not None:
-                    if "response" in v:
-                        # The model response (goal_assessment_result)
-                        goal_assessment_result = v["response"]
+        try:
+            # Execute the workflow
+            async for event in app.astream(inputs, config=config):
+                for k, v in event.items():
+                    if k != "__end__" and v is not None:
+                        if "response" in v:
+                            # The model response (goal_assessment_result)
+                            goal_assessment_result = v["response"]
+                        if "past_steps" in v:
+                            # Collect execution steps for better error reporting
+                            for step, result in v["past_steps"]:
+                                final_result += result + "\n"
 
-        # Check if goal_assessment_result is None
-        if goal_assessment_result is None:
-            raise HTTPException(
-                status_code=500, detail="Failed to generate goal assessment result"
-            )
+            # Check if goal_assessment_result is None
+            if goal_assessment_result is None:
+                raise HTTPException(
+                    status_code=500, detail="Failed to generate goal assessment result"
+                )
 
-        # Return the goal_assessment_result
-        return {"goal_assessment_result": json.loads(goal_assessment_result)}
+            # Return the goal_assessment_result
+            return {"goal_assessment_result": json.loads(goal_assessment_result)}
 
+        except KeyboardInterrupt:
+            # Handle user interruption
+            error_message = "Execution was interrupted by user"
+            print(f"\n\n{error_message}")
+
+            # Return partial results if available
+            if goal_assessment_result:
+                try:
+                    return {
+                        "goal_assessment_result": json.loads(goal_assessment_result)
+                    }
+                except:
+                    pass
+
+            # Create a fallback response
+            fallback_response = {
+                "error": error_message,
+                "partial_result": (
+                    final_result.strip()
+                    if final_result
+                    else "No results generated before interruption"
+                ),
+            }
+
+            return {"goal_assessment_result": fallback_response}
+
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
-        # Handle exceptions
-        raise HTTPException(
-            status_code=500, detail=f"An error occurred: {str(e)}"
-        ) from e
+        # Handle all other exceptions
+        error_message = f"An error occurred: {str(e)}"
+        print(f"\n\n{error_message}")
+
+        raise HTTPException(status_code=500, detail=error_message) from e
 
 
 class FlowchartResponse(BaseModel):
@@ -107,40 +148,43 @@ async def upload_flowchart(file: UploadFile = File(...)) -> Dict[str, Any]:
     """
     try:
         # Check if the file is a YAML file
-        if not file.filename.endswith(('.yaml', '.yml')):
+        if not file.filename.endswith((".yaml", ".yml")):
             return JSONResponse(
                 status_code=400,
-                content={"success": False, "message": "File must be a YAML file"}
+                content={"success": False, "message": "File must be a YAML file"},
             )
 
         # Read the file content
         content = await file.read()
-        
+
         # Parse the YAML content to validate it
         try:
             flowchart_data = yaml.safe_load(content)
         except yaml.YAMLError as e:
             return JSONResponse(
                 status_code=400,
-                content={"success": False, "message": f"Invalid YAML format: {str(e)}"}
+                content={"success": False, "message": f"Invalid YAML format: {str(e)}"},
             )
 
         # Save the file to a specific location
-        flowchart_dir = os.path.join(os.path.dirname(__file__), 'flowcharts')
+        flowchart_dir = os.path.join(os.path.dirname(__file__), "flowcharts")
         os.makedirs(flowchart_dir, exist_ok=True)
-        
-        flowchart_path = os.path.join(flowchart_dir, 'current_flowchart.yaml')
-        
-        with open(flowchart_path, 'wb') as f:
+
+        flowchart_path = os.path.join(flowchart_dir, "current_flowchart.yaml")
+
+        with open(flowchart_path, "wb") as f:
             f.write(content)
 
-        return {"success": True, "message": f"Flowchart saved successfully at {flowchart_path}"}
+        return {
+            "success": True,
+            "message": f"Flowchart saved successfully at {flowchart_path}",
+        }
 
     except Exception as e:
         # Handle exceptions
         return JSONResponse(
             status_code=500,
-            content={"success": False, "message": f"An error occurred: {str(e)}"}
+            content={"success": False, "message": f"An error occurred: {str(e)}"},
         )
 
 

@@ -7,7 +7,7 @@ import pytest  # pylint: disable=import-error
 
 def main():
     """Run all tests"""
-    # Get the directory of this script
+    # Get the directory of this script``
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
     # Add the script directory to the Python path

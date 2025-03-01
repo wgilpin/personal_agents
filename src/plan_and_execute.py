@@ -378,7 +378,7 @@ class PlanAndExecuteAgent:
             return None
 
         try:
-            with open(filepath, "r") as f:
+            with open(filepath, "r", encoding="utf-8") as f:
                 flowchart_data = yaml.safe_load(f)
             return flowchart_data
         except Exception as e:
@@ -492,33 +492,54 @@ class PlanAndExecuteAgent:
                 print(f"Error building custom workflow: {str(e)}")
                 print("Falling back to default workflow")
 
-        # Run the workflow
-        async for event in workflow_to_use.astream(inputs, config=config):
-            for k, v in event.items():
-                if k != "__end__" and v is not None:
-                    if "past_steps" in v:
-                        # In plan execution, steps are moved to past_steps as they are completed
-                        for step, result in v["past_steps"]:
-                            print(f"EXECUTED: {step}")
-                            final_result += result + "\n"
-                    if "plan" in v:
-                        # A plan has been created
-                        print("PLAN:")
-                        for idx, item in enumerate(v["plan"]):
-                            print(f"  {idx+1}. {item}")
-                    if "response" in v:
-                        # The model response
-                        goal_assessment_result = v["response"]
-                    if "goal_assessment_feedback" in v:
-                        # if the response was rejected, feedback is given as to why
-                        goal_assessment_feedback = v["goal_assessment_feedback"]
-                        print(f"\nGOAL ASSESSMENT FEEDBACK: {goal_assessment_feedback}")
+        try:
+            # Run the workflow
+            async for event in workflow_to_use.astream(inputs, config=config):
+                for k, v in event.items():
+                    if k != "__end__" and v is not None:
+                        if "past_steps" in v:
+                            # In plan execution, steps are moved to past_steps as they are completed
+                            for step, result in v["past_steps"]:
+                                print(f"EXECUTED: {step}")
+                                final_result += result + "\n"
+                        if "plan" in v:
+                            # A plan has been created
+                            print("PLAN:")
+                            for idx, item in enumerate(v["plan"]):
+                                print(f"  {idx+1}. {item}")
+                        if "response" in v:
+                            # The model response
+                            goal_assessment_result = v["response"]
+                        if "goal_assessment_feedback" in v:
+                            # if the response was rejected, feedback is given as to why
+                            goal_assessment_feedback = v["goal_assessment_feedback"]
+                            print(
+                                f"\nGOAL ASSESSMENT FEEDBACK: {goal_assessment_feedback}"
+                            )
 
-        print("DONE: " + final_result)
-        if goal_assessment_result:
-            # the final json result of the model
-            print("\nGOAL ASSESSMENT RESULT:")
-            print(goal_assessment_result)
+            print("DONE: " + final_result)
+            if goal_assessment_result:
+                # the final json result of the model
+                print("\nGOAL ASSESSMENT RESULT:")
+                print(goal_assessment_result)
+
+        except KeyboardInterrupt:
+            print("\n\nExecution interrupted by user. Cleaning up...")
+            # You might want to add additional cleanup code here if needed
+            return {
+                "final_result": final_result,
+                "goal_assessment_result": goal_assessment_result,
+                "goal_assessment_feedback": "Execution was interrupted by user",
+                "error": "KeyboardInterrupt",
+            }
+        except Exception as e:
+            print(f"\n\nAn error occurred during execution: {str(e)}")
+            return {
+                "final_result": final_result,
+                "goal_assessment_result": goal_assessment_result,
+                "goal_assessment_feedback": f"Execution failed with error: {str(e)}",
+                "error": str(e),
+            }
 
         return {
             "final_result": final_result,
@@ -550,7 +571,8 @@ def parse_args():
     parser.add_argument(
         "--input",
         type=str,
-        default="Get me a list of the names of people who have been prominent in AI news this week, along with why they are in the news",
+        default="""Get me a list of the names of people who have been prominent in AI news this week, along with
+            why they are in the news""",
         help="Input text to process",
     )
     return parser.parse_args()
@@ -560,12 +582,28 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
-    # Create the agent
-    agent = PlanAndExecuteAgent()
+    try:
+        # Create the agent
+        agent = PlanAndExecuteAgent()
 
-    # Save the image only if --flowchart flag is provided
-    if args.flowchart:
-        agent.show_graph()
+        # Save the image only if --flowchart flag is provided
+        if args.flowchart:
+            agent.show_graph()
 
-    # Run the main workflow
-    asyncio.run(agent.run(args.input))
+        # Run the main workflow
+        try:
+            result = asyncio.run(agent.run(args.input))
+
+            # Check if there was an error
+            if result.get("error"):
+                print(f"\nExecution completed with error: {result['error']}")
+
+        except KeyboardInterrupt:
+            print("\nExecution interrupted by user at the top level.")
+            print("Exiting gracefully...")
+
+    except Exception as e:
+        print(f"\nAn unexpected error occurred: {str(e)}")
+        import traceback
+
+        traceback.print_exc()
