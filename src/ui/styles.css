@@ -304,3 +304,48 @@ body {
 .connection-point-no {
     border-color: #f44336;
 }
+
+/* Node type selector styles */
+.node-type-selector {
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.node-type-selector label {
+    margin-right: 8px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.node-type-selector select {
+    background-color: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 3px;
+    color: white;
+    padding: 3px 6px;
+    font-size: 12px;
+}
+
+.node-type-selector select:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.8);
+}
+
+.node-content-container {
+    margin-bottom: 8px;
+}
+
+.node-text {
+    min-height: 20px;
+    padding: 4px;
+    background-color: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 3px;
+    color: white;
+}
+
+.node-text:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.8);
+}

@@ -11,13 +11,33 @@
       <button class="node-delete" @click.stop="$emit('delete-node', node.id)">×</button>
     </div>
     <div class="node-content">
-      <div 
-        class="node-text" 
-        contenteditable="true" 
-        @input="updateNodeContent($event)"
-        @mousedown.stop
-        v-text="node.content"
-      ></div>
+      <div class="node-content-container">
+        <div v-if="node.type === 'act'" class="node-type-selector">
+          <label>Action Type:</label>
+          <select @change="updateNodeActionType($event)" @mousedown.stop>
+            <option value="execute" :selected="!node.content || node.content.toLowerCase().indexOf('plan') === -1">Execute</option>
+            <option value="plan" :selected="node.content && node.content.toLowerCase().indexOf('plan') !== -1">Plan</option>
+          </select>
+        </div>
+        
+        <div v-if="node.type === 'terminal'" class="node-type-selector">
+          <label>Terminal Type:</label>
+          <select @change="updateNodeTerminalType($event)" @mousedown.stop>
+            <option value="start" :selected="!node.content || node.content.toLowerCase().indexOf('stop') === -1">Start</option>
+            <option value="stop" :selected="node.content && node.content.toLowerCase().indexOf('stop') !== -1">Stop</option>
+          </select>
+        </div>
+        
+        <div 
+          v-if="node.type === 'choice'"
+          class="node-text" 
+          contenteditable="true" 
+          @input="updateNodeContent($event)"
+          @mousedown.stop
+          v-text="node.content"
+        ></div>
+      </div>
+      
       <div v-if="node.type === 'act'" class="prompt-container">
         <label :for="`${node.id}-prompt`">Command:</label>
         <textarea 
@@ -145,6 +165,18 @@ export default {
     },
     updateNodePrompt(e) {
       this.$emit('update-node', this.node.id, { prompt: e.target.value });
+    },
+    updateNodeActionType(e) {
+      // Update the node content based on the selected action type
+      const actionType = e.target.value;
+      const content = actionType === 'plan' ? 'plan' : 'execute';
+      this.$emit('update-node', this.node.id, { content });
+    },
+    updateNodeTerminalType(e) {
+      // Update the node content based on the selected terminal type
+      const terminalType = e.target.value;
+      const content = terminalType === 'stop' ? 'stop' : 'start';
+      this.$emit('update-node', this.node.id, { content });
     }
   }
 };

@@ -210,8 +210,18 @@ export default {
       } else if (typeof obj === 'object' && obj !== null) {
         // Handle objects
         for (const [key, value] of Object.entries(obj)) {
-          if (typeof value === 'object' && value !== null) {
+          if (value === null || value === undefined) {
+            // Skip null or undefined values
+            continue;
+          } else if (typeof value === 'object') {
             yaml += `${indentStr}${key}:\n${this.convertToYaml(value, indent + 2)}`;
+          } else if (typeof value === 'string' && value.includes('\n')) {
+            // Handle multiline strings (like prompts)
+            yaml += `${indentStr}${key}: |\n`;
+            const lines = value.split('\n');
+            for (const line of lines) {
+              yaml += `${indentStr}  ${line}\n`;
+            }
           } else {
             yaml += `${indentStr}${key}: ${value}\n`;
           }

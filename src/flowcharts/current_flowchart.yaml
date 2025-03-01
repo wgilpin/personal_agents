@@ -1,0 +1,74 @@
+nodes:
+  - 
+    id: node-1
+    type: act
+    position:
+      x: 120
+      y: 120
+    content: 
+
+  - 
+    id: node-2
+    type: choice
+    position:
+      x: 369
+      y: 320
+    content: 
+
+  - 
+    id: node-3
+    type: terminal
+    position:
+      x: 576
+      y: 588
+    content: 
+
+  - 
+    id: node-4
+    type: act
+    position:
+      x: 211
+      y: 638
+    content: 
+
+  - 
+    id: node-5
+    type: terminal
+    position:
+      x: 297
+      y: 830
+    content: 
+
+connections:
+  - 
+    from:
+      nodeId: node-2
+      position: no
+    to:
+      nodeId: node-3
+      position: top
+
+  - 
+    from:
+      nodeId: node-1
+      position: bottom
+    to:
+      nodeId: node-2
+      position: top
+
+  - 
+    from:
+      nodeId: node-2
+      position: yes
+    to:
+      nodeId: node-4
+      position: top
+
+  - 
+    from:
+      nodeId: node-4
+      position: bottom
+    to:
+      nodeId: node-5
+      position: top
+
