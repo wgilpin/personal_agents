@@ -59,7 +59,7 @@ export default {
         x: boundedX,
         y: boundedY,
         content,
-        prompt: type === 'act' ? prompt : null
+        prompt: (type === 'act' || type === 'choice') ? prompt : null
       };
       
       this.nodes.push(newNode);
@@ -110,7 +110,7 @@ export default {
       });
     },
     
-    updateConnections(nodeId) {
+    updateConnections() {
       // This method is a placeholder for any additional logic needed
       // The actual connection path updates are handled in the FlowchartCanvas component
     },
@@ -172,8 +172,8 @@ export default {
             content: node.content
           };
           
-          // Add prompt for action nodes
-          if (node.type === 'act' && node.prompt) {
+          // Add prompt for action and choice nodes
+          if ((node.type === 'act' || node.type === 'choice') && node.prompt) {
             cleanNode.prompt = node.prompt;
           }
           

@@ -29,18 +29,80 @@
           v-text="node.prompt"
         ></textarea>
       </div>
+      <div v-if="node.type === 'choice'" class="prompt-container">
+        <label :for="`${node.id}-prompt`">Question:</label>
+        <textarea 
+          :id="`${node.id}-prompt`" 
+          class="node-prompt" 
+          placeholder="Enter question here..."
+          @input="updateNodePrompt($event)"
+          @mousedown.stop
+          v-text="node.prompt"
+        ></textarea>
+        <div class="choice-exits">
+          <div class="exit-yes-container">
+            <div class="exit-label exit-yes">Yes</div>
+            <div 
+              class="connection-point connection-point-yes"
+              data-position="yes"
+              :data-node-id="node.id"
+              @mousedown.stop="$emit('connection-start', node.id, 'yes', $event)"
+            ></div>
+          </div>
+          <div class="exit-no-container">
+            <div class="exit-label exit-no">No</div>
+            <div 
+              class="connection-point connection-point-no"
+              data-position="no"
+              :data-node-id="node.id"
+              @mousedown.stop="$emit('connection-start', node.id, 'no', $event)"
+            ></div>
+          </div>
+        </div>
+      </div>
     </div>
     
-    <!-- Connection points -->
-    <div 
-      v-for="position in ['top', 'right', 'bottom', 'left']" 
-      :key="position"
-      class="connection-point" 
-      :class="`connection-point-${position}`"
-      :data-position="position"
-      :data-node-id="node.id"
-      @mousedown.stop="$emit('connection-start', node.id, position, $event)"
-    ></div>
+    <!-- Connection points for action nodes -->
+    <template v-if="node.type === 'act'">
+      <div 
+        v-for="position in ['top', 'right', 'bottom', 'left']" 
+        :key="position"
+        class="connection-point" 
+        :class="`connection-point-${position}`"
+        :data-position="position"
+        :data-node-id="node.id"
+        @mousedown.stop="$emit('connection-start', node.id, position, $event)"
+      ></div>
+    </template>
+    
+    <!-- For choice nodes, only add input connection points (no output except yes/no) -->
+    <template v-if="node.type === 'choice'">
+      <div 
+        v-for="position in ['top', 'right', 'left']" 
+        :key="position"
+        class="connection-point connection-point-input" 
+        :class="`connection-point-${position}`"
+        :data-position="position"
+        :data-node-id="node.id"
+        @mousedown.stop="$emit('connection-start', node.id, position, $event)"
+      ></div>
+    </template>
+    
+    <!-- For terminal nodes, only add top and bottom connection points -->
+    <template v-if="node.type === 'terminal'">
+      <div 
+        class="connection-point connection-point-top connection-point-input" 
+        data-position="top"
+        :data-node-id="node.id"
+        @mousedown.stop="$emit('connection-start', node.id, 'top', $event)"
+      ></div>
+      <div 
+        class="connection-point connection-point-bottom connection-point-output" 
+        data-position="bottom"
+        :data-node-id="node.id"
+        @mousedown.stop="$emit('connection-start', node.id, 'bottom', $event)"
+      ></div>
+    </template>
   </div>
 </template>
 

@@ -171,20 +171,51 @@ export default {
     handleConnectionStart(nodeId, position, event) {
       event.stopPropagation();
       
+      // Get the node type
+      const node = this.nodes.find(n => n.id === nodeId);
+      if (!node) return;
+      
       // If we're already in connecting mode, this is the second click (end point)
       if (this.isConnecting && this.startConnectionNodeId) {
         const endNodeId = nodeId;
         const endPosition = position;
+        const endNode = this.nodes.find(n => n.id === endNodeId);
         
         // Don't connect to the same node
-        if (endNodeId !== this.startConnectionNodeId) {
-          this.$emit('create-connection', 
-            this.startConnectionNodeId, 
-            this.startConnectionPosition, 
-            endNodeId, 
-            endPosition
-          );
+        if (endNodeId === this.startConnectionNodeId) {
+          // Reset connection state
+          this.isConnecting = false;
+          this.startConnectionNodeId = null;
+          this.startConnectionPosition = null;
+          this.tempConnectionPath = '';
+          return;
         }
+        
+        // For terminal nodes, bottom connector can only be used for outgoing connections
+        if (endNode && endNode.type === 'terminal' && endPosition === 'bottom') {
+          // Reset connection state
+          this.isConnecting = false;
+          this.startConnectionNodeId = null;
+          this.startConnectionPosition = null;
+          this.tempConnectionPath = '';
+          
+          // Reset the highlight on any connection points
+          const points = document.querySelectorAll('.connection-point');
+          points.forEach(point => {
+            point.style.backgroundColor = '#fff';
+            point.style.borderColor = '#333';
+          });
+          
+          return;
+        }
+        
+        // Create the connection
+        this.$emit('create-connection', 
+          this.startConnectionNodeId, 
+          this.startConnectionPosition, 
+          endNodeId, 
+          endPosition
+        );
         
         // Reset connection state
         this.isConnecting = false;
@@ -193,6 +224,20 @@ export default {
         this.tempConnectionPath = '';
         
         return;
+      }
+      
+      // For choice nodes, only allow connections from yes/no points
+      if (node.type === 'choice' && position !== 'yes' && position !== 'no') {
+        // Don't allow connections from input points of choice nodes
+        return;
+      }
+      
+      // For terminal nodes, enforce connection rules
+      if (node.type === 'terminal') {
+        // Top connector can only receive connections, not initiate them
+        if (position === 'top') {
+          return;
+        }
       }
       
       // First click - start the connection
@@ -256,10 +301,6 @@ export default {
       // Calculate control points for a curved path
       let controlPoint1X, controlPoint1Y, controlPoint2X, controlPoint2Y;
       
-      const dx = Math.abs(endX - startX);
-      const dy = Math.abs(endY - startY);
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
       // Adjust control points based on connection position
       if (startPosition === 'right') {
         controlPoint1X = startX + 50;
@@ -281,6 +322,16 @@ export default {
         controlPoint1Y = startY - 50;
         controlPoint2X = endX;
         controlPoint2Y = endY + 50;
+      } else if (startPosition === 'yes') {
+        controlPoint1X = startX;
+        controlPoint1Y = startY + 50;
+        controlPoint2X = endX;
+        controlPoint2Y = endY - 50;
+      } else if (startPosition === 'no') {
+        controlPoint1X = startX;
+        controlPoint1Y = startY + 50;
+        controlPoint2X = endX;
+        controlPoint2Y = endY - 50;
       }
       
       // Calculate the midpoint of the path for placing the arrow
@@ -313,21 +364,32 @@ export default {
       
       const dx = Math.abs(endPoint.x - startPoint.x);
       const dy = Math.abs(endPoint.y - startPoint.y);
-      const distance = Math.sqrt(dx * dx + dy * dy);
       
       // Adjust control points based on connection positions
       if (startPosition === 'right' && endPosition === 'left') {
         // Horizontal connection
-        controlPoint1X = startPoint.x + distance / 3;
+        controlPoint1X = startPoint.x + dx / 3;
         controlPoint1Y = startPoint.y;
-        controlPoint2X = endPoint.x - distance / 3;
+        controlPoint2X = endPoint.x - dx / 3;
         controlPoint2Y = endPoint.y;
       } else if (startPosition === 'bottom' && endPosition === 'top') {
         // Vertical connection
         controlPoint1X = startPoint.x;
-        controlPoint1Y = startPoint.y + distance / 3;
+        controlPoint1Y = startPoint.y + dy / 3;
         controlPoint2X = endPoint.x;
-        controlPoint2Y = endPoint.y - distance / 3;
+        controlPoint2Y = endPoint.y - dy / 3;
+      } else if (startPosition === 'yes' || startPosition === 'no') {
+        // Yes/No connection from choice node
+        controlPoint1X = startPoint.x;
+        controlPoint1Y = startPoint.y + dy / 3;
+        controlPoint2X = endPoint.x;
+        controlPoint2Y = endPoint.y - dy / 3;
+      } else if (endPosition === 'yes' || endPosition === 'no') {
+        // Connection to Yes/No point of choice node
+        controlPoint1X = startPoint.x;
+        controlPoint1Y = startPoint.y + dy / 3;
+        controlPoint2X = endPoint.x;
+        controlPoint2Y = endPoint.y - dy / 3;
       } else {
         // Default curved connection
         controlPoint1X = startPoint.x + (endPoint.x - startPoint.x) / 2;

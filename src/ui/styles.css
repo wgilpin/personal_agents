@@ -253,3 +253,54 @@ body {
     border-color: rgba(255, 255, 255, 0.8);
     background-color: rgba(255, 255, 255, 0.3);
 }
+
+/* Styles for choice node exit labels */
+.choice-exits {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+}
+
+.exit-yes-container, .exit-no-container {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.exit-label {
+    font-size: 12px;
+    font-weight: bold;
+    padding: 3px 8px;
+    border-radius: 10px;
+    background-color: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    margin-bottom: 5px;
+}
+
+.exit-yes {
+    color: #4CAF50;
+}
+
+.exit-no {
+    color: #f44336;
+}
+
+.connection-point-yes, .connection-point-no {
+    position: relative;
+    width: 12px;
+    height: 12px;
+    background-color: #fff;
+    border: 2px solid #333;
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 20;
+}
+
+.connection-point-yes {
+    border-color: #4CAF50;
+}
+
+.connection-point-no {
+    border-color: #f44336;
+}
