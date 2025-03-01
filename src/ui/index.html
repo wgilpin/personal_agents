@@ -1,13 +1,30 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + Svelte</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.js"></script>
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flowchart Builder</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <div class="toolbar">
+            <h1>Flowchart Builder</h1>
+            <div class="node-types">
+                <button class="node-button" data-type="act">Action</button>
+                <button class="node-button" data-type="choice">Choice</button>
+                <button class="node-button" data-type="terminal">Terminal</button>
+            </div>
+            <button id="new-flowchart">New Flowchart</button>
+            <button id="publish-flowchart">Publish</button>
+        </div>
+        <div class="instructions">
+            <p>To create a connection: Click on a connection point (white circle) of one node, then click on a connection point of another node.</p>
+        </div>
+        <div class="canvas-container">
+            <div id="canvas"></div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
 </html>
