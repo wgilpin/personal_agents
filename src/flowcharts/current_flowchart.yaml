@@ -5,7 +5,8 @@ nodes:
     position:
       x: 120
       y: 120
-    content: 
+    content: Start workflow 1
+    prompt: This is the first action in workflow 1
 
   - 
     id: node-2
@@ -13,15 +14,8 @@ nodes:
     position:
       x: 369
       y: 320
-    content: 
-
-  - 
-    id: node-3
-    type: terminal
-    position:
-      x: 576
-      y: 588
-    content: 
+    content: Is condition met?
+    prompt: Check if the condition is met
 
   - 
     id: node-4
@@ -29,7 +23,8 @@ nodes:
     position:
       x: 211
       y: 638
-    content: 
+    content: Perform action
+    prompt: Perform the required action
 
   - 
     id: node-5
@@ -37,17 +32,9 @@ nodes:
     position:
       x: 297
       y: 830
-    content: 
+    content: End workflow (Yes)
 
 connections:
-  - 
-    from:
-      nodeId: node-2
-      position: no
-    to:
-      nodeId: node-3
-      position: top
-
   - 
     from:
       nodeId: node-1

@@ -150,9 +150,6 @@ export default {
           if (response.data.success) {
             // Show success message
             alert('Flowchart published successfully!');
-            
-            // Also save a local copy
-            this.downloadYamlFile(flowchartData);
           } else {
             // Show error message
             alert(`Error publishing flowchart: ${response.data.message}`);
@@ -161,9 +158,6 @@ export default {
         .catch(error => {
           // Show error message
           alert(`Error publishing flowchart: ${error.message}`);
-          
-          // Save a local copy anyway
-          this.downloadYamlFile(flowchartData);
         });
     },
     
@@ -249,6 +243,8 @@ export default {
     },
     
     loadWorkflow(workflowData) {
+      console.log('Loading workflow:', workflowData);
+      
       // Reset the current flowchart
       this.createNewFlowchart();
       
@@ -289,20 +285,46 @@ export default {
         }
       }
       
-      // Load the connections from the workflow data
-      if (workflowData.connections && Array.isArray(workflowData.connections)) {
-        workflowData.connections.forEach(conn => {
-          this.createConnection(
-            conn.from.nodeId,
-            conn.from.position,
-            conn.to.nodeId,
-            conn.to.position
-          );
-        });
-      }
-      
-      // Show success message
-      alert('Workflow loaded successfully!');
+      // Add a longer delay to ensure DOM is fully rendered
+      setTimeout(() => {
+        console.log('Creating connections after delay');
+        
+        // Load the connections from the workflow data
+        if (workflowData.connections && Array.isArray(workflowData.connections)) {
+          console.log('Connections to create:', workflowData.connections);
+          
+          workflowData.connections.forEach(conn => {
+            // Get the connection details
+            const fromNodeId = conn.from.nodeId;
+            let fromPosition = conn.from.position;
+            const toNodeId = conn.to.nodeId;
+            const toPosition = conn.to.position;
+            
+            // Fix for yes/no vs true/false mismatch
+            // Convert true/false to yes/no
+            if (fromPosition === 'true' || fromPosition === true) fromPosition = 'yes';
+            if (fromPosition === 'false' || fromPosition === false) fromPosition = 'no';
+            
+            console.log(`Creating connection from ${fromNodeId} (${fromPosition}) to ${toNodeId} (${toPosition})`);
+            
+            this.createConnection(
+              fromNodeId,
+              fromPosition,
+              toNodeId,
+              toPosition
+            );
+          });
+          
+          // Force a redraw of all connections
+          this.$nextTick(() => {
+            const canvas = this.$refs.canvas;
+            if (canvas && typeof canvas.redrawConnections === 'function') {
+              canvas.redrawConnections();
+            }
+          });
+        }
+        
+      }, 1000); // Increase delay to 1000ms
     }
   }
 };

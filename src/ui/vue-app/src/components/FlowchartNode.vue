@@ -66,6 +66,7 @@
               class="connection-point connection-point-yes"
               data-position="yes"
               :data-node-id="node.id"
+              :id="`${node.id}-yes-connection`"
               @mousedown.stop="$emit('connection-start', node.id, 'yes', $event)"
             ></div>
           </div>
@@ -75,6 +76,7 @@
               class="connection-point connection-point-no"
               data-position="no"
               :data-node-id="node.id"
+              :id="`${node.id}-no-connection`"
               @mousedown.stop="$emit('connection-start', node.id, 'no', $event)"
             ></div>
           </div>

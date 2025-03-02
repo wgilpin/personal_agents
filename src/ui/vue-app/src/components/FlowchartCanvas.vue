@@ -118,6 +118,11 @@ export default {
     this.$refs.connectionsLayer.style.top = '0';
     this.$refs.connectionsLayer.style.left = '0';
     this.$refs.connectionsLayer.style.pointerEvents = 'none';
+    
+    // Expose the redrawConnections method to the parent component
+    if (this.$parent && this.$parent.$refs && this.$parent.$refs.canvas === this) {
+      this.$parent.$refs.canvas.redrawConnections = this.redrawConnections;
+    }
   },
   beforeUnmount() {
     // Remove global event listeners
@@ -344,24 +349,73 @@ export default {
     
     getConnectionPath(connection) {
       const startNodeId = connection.startNodeId;
-      const startPosition = connection.startPosition;
+      let startPosition = connection.startPosition;
       const endNodeId = connection.endNodeId;
       const endPosition = connection.endPosition;
       
+      // Handle true/false vs yes/no mismatch
+      if (startPosition === 'true' || startPosition === true) startPosition = 'yes';
+      if (startPosition === 'false' || startPosition === false) startPosition = 'no';
+      
+      // Log connection details for debugging
+      console.log(`Drawing connection from ${startNodeId} (${startPosition}) to ${endNodeId} (${endPosition})`);
+      
       // Get connection points
-      const startPoint = this.getConnectionPointCoordinates(
-        document.querySelector(`.connection-point-${startPosition}[data-node-id="${startNodeId}"]`)
-      );
+      let startPoint = null;
+      let endPoint = null;
       
-      const endPoint = this.getConnectionPointCoordinates(
-        document.querySelector(`.connection-point-${endPosition}[data-node-id="${endNodeId}"]`)
-      );
-      
-      if (!startPoint || !endPoint) return '';
+      // For choice node yes/no connections, create a virtual point
+      if ((startPosition === 'yes' || startPosition === 'no') && 
+          this.nodes.find(n => n.id === startNodeId && n.type === 'choice')) {
+        
+        // Get the node's position
+        const node = this.nodes.find(n => n.id === startNodeId);
+        if (node) {
+          // Normalize position for calculation
+          const normalizedPosition = (startPosition === 'true') ? 'yes' : (startPosition === 'false') ? 'no' : startPosition;
+          
+          // Calculate the position of the yes/no connection points
+          const x = node.x + (normalizedPosition === 'yes' ? 50 : 150); // yes on left, no on right
+          const y = node.y + 120; // below the node
+          
+          // Create a virtual start point
+          startPoint = { x, y };
+          
+          // Get the end point
+          const endElement = document.querySelector(`.connection-point-${endPosition}[data-node-id="${endNodeId}"]`);
+          endPoint = this.getConnectionPointCoordinates(endElement);
+          
+          if (!endPoint) {
+            console.warn(`Could not find end point for connection from ${startNodeId} (${startPosition}) to ${endNodeId} (${endPosition})`);
+            return '';
+          }
+        }
+      } else {
+        // For regular connection points
+        const startElement = document.querySelector(`.connection-point-${startPosition}[data-node-id="${startNodeId}"]`);
+        const endElement = document.querySelector(`.connection-point-${endPosition}[data-node-id="${endNodeId}"]`);
+        
+        // Log elements for debugging
+        console.log('Start element:', startElement);
+        console.log('End element:', endElement);
+        
+        startPoint = this.getConnectionPointCoordinates(startElement);
+        endPoint = this.getConnectionPointCoordinates(endElement);
+        
+        // Log points for debugging
+        console.log('Start point:', startPoint);
+        console.log('End point:', endPoint);
+        
+        if (!startPoint || !endPoint) {
+          console.warn(`Could not find connection points for ${startNodeId} (${startPosition}) to ${endNodeId} (${endPosition})`);
+          return '';
+        }
+      }
       
       // Calculate control points for a curved path
       let controlPoint1X, controlPoint1Y, controlPoint2X, controlPoint2Y;
       
+      // Calculate horizontal and vertical distances
       const dx = Math.abs(endPoint.x - startPoint.x);
       const dy = Math.abs(endPoint.y - startPoint.y);
       
@@ -379,12 +433,13 @@ export default {
         controlPoint2X = endPoint.x;
         controlPoint2Y = endPoint.y - dy / 3;
       } else if (startPosition === 'yes' || startPosition === 'no') {
-        // Yes/No connection from choice node
-        controlPoint1X = startPoint.x;
-        controlPoint1Y = startPoint.y + dy / 3;
-        controlPoint2X = endPoint.x;
-        controlPoint2Y = endPoint.y - dy / 3;
-      } else if (endPosition === 'yes' || endPosition === 'no') {
+        // Yes/No connection from choice node - vertical first, then horizontal
+        // Use dx to determine how much horizontal curve to add
+        controlPoint1X = startPoint.x + (dx > 100 ? dx / 10 : 0);
+        controlPoint1Y = startPoint.y + 30; // Go down first
+        controlPoint2X = endPoint.x - (dx > 100 ? dx / 10 : 0);
+        controlPoint2Y = endPoint.y - 30; // Then approach the end point
+      } else if (endPosition === 'yes' || endPosition === 'no' ) {
         // Connection to Yes/No point of choice node
         controlPoint1X = startPoint.x;
         controlPoint1Y = startPoint.y + dy / 3;
@@ -416,6 +471,31 @@ export default {
         x: rect.left + rect.width / 2 - canvasRect.left,
         y: rect.top + rect.height / 2 - canvasRect.top
       };
+    },
+    
+    // Force redraw of connections after component is updated
+    updated() {
+      this.redrawConnections();
+    },
+    
+    // Method to manually redraw all connections
+    redrawConnections() {
+      // Use nextTick to ensure DOM is fully updated
+      this.$nextTick(() => {
+        console.log('Redrawing all connections:', this.connections);
+        
+        // Redraw all connections
+        this.connections.forEach(connection => {
+          const path = document.getElementById(connection.id);
+          if (path) {
+            const newPath = this.getConnectionPath(connection);
+            console.log(`Updating path for ${connection.id} to: ${newPath}`);
+            path.setAttribute('d', newPath);
+          } else {
+            console.warn(`Path element not found for connection: ${connection.id}`);
+          }
+        });
+      });
     }
   }
 };
