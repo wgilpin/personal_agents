@@ -17,6 +17,32 @@ from pydantic import BaseModel
 # Load environment variables
 load_dotenv()
 
+
+def extract_workflow_description(file_path: str) -> str:
+    """
+    Extract the description from a workflow file.
+
+    Args:
+        file_path: Path to the workflow file
+
+    Returns:
+        The extracted description or an empty string if not found
+    """
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = yaml.safe_load(f)
+
+        # Get the first node with content as a description
+        if content and "nodes" in content and content["nodes"]:
+            for node in content["nodes"]:
+                if node.get("content"):
+                    return node["content"]
+    except Exception:
+        pass
+
+    return ""
+
+
 # Create FastAPI app
 api = FastAPI(title="Plan and Execute API", description="API for plan_and_execute.py")
 
@@ -43,7 +69,7 @@ class ApiResponse(BaseModel):
 
 
 @api.post("/execute", response_model=ApiResponse)
-async def execute_prompt(prompt_input: PromptInput) -> Dict[str, Any]:
+async def execute_prompt(prompt_input: PromptInput) -> Dict[str, Any]:  # pylint: disable=unused-argument
     """
     Execute a prompt using the plan_and_execute workflow.
 
@@ -95,7 +121,7 @@ async def upload_flowchart(file: UploadFile = File(...)) -> Dict[str, Any]:
 
         # Parse the YAML content to validate it
         try:
-            flowchart_data = yaml.safe_load(content)
+            _ = yaml.safe_load(content)
         except yaml.YAMLError as e:
             return JSONResponse(
                 status_code=400,
@@ -151,19 +177,7 @@ async def list_workflows() -> List[Dict[str, Any]]:
                 name = os.path.splitext(filename)[0]
 
                 # Try to extract some metadata from the file
-                try:
-                    with open(file_path, "r") as f:
-                        content = yaml.safe_load(f)
-
-                    # Get the first node with content as a description
-                    description = ""
-                    if content and "nodes" in content and content["nodes"]:
-                        for node in content["nodes"]:
-                            if node.get("content"):
-                                description = node["content"]
-                                break
-                except Exception:
-                    description = ""
+                description = extract_workflow_description(file_path)
 
                 workflows.append({"name": name, "filename": filename, "description": description})
 
@@ -194,7 +208,7 @@ async def get_workflow(filename: str) -> Dict[str, Any]:
             raise HTTPException(status_code=404, detail=f"Workflow file '{filename}' not found")
 
         # Read and parse the workflow file
-        with open(workflow_path, "r") as f:
+        with open(workflow_path, "r", encoding="utf-8") as f:
             workflow_data = yaml.safe_load(f)
 
         return workflow_data
@@ -207,6 +221,6 @@ async def get_workflow(filename: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"An error occurred while reading workflow: {str(e)}") from e
 
 
-# Run the server
+# Run the server when this file is executed directly
 if __name__ == "__main__":
     uvicorn.run("api_server:api", host="0.0.0.0", port=8000, reload=True)
