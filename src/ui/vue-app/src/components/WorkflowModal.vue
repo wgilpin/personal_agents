@@ -16,14 +16,32 @@
           No workflows found.
         </div>
         <div v-else class="workflow-list">
-          <div 
-            v-for="workflow in workflows" 
+          <div
+            v-for="workflow in workflows"
             :key="workflow.filename"
             class="workflow-item"
             :class="{ selected: selectedWorkflow === workflow.filename }"
             @click="selectWorkflow(workflow.filename)"
           >
-            <div class="workflow-name">{{ workflow.name }}</div>
+            <div class="workflow-header">
+              <div v-if="editingWorkflow === workflow.filename" class="workflow-name-edit">
+                <input
+                  type="text"
+                  v-model="editedName"
+                  @click.stop
+                  @keyup.enter="saveWorkflowName(workflow.filename)"
+                  ref="nameInput"
+                />
+                <div class="edit-actions">
+                  <button class="save-button" @click.stop="saveWorkflowName(workflow.filename)">Save</button>
+                  <button class="cancel-button" @click.stop="cancelEdit()">Cancel</button>
+                </div>
+              </div>
+              <div v-else class="workflow-name-display">
+                <div class="workflow-name">{{ workflow.name }}</div>
+                <button class="edit-button" @click.stop="startEdit(workflow)">Edit</button>
+              </div>
+            </div>
             <div class="workflow-description">{{ workflow.description || 'No description' }}</div>
           </div>
         </div>
@@ -58,7 +76,9 @@ export default {
       workflows: [],
       loading: false,
       error: null,
-      selectedWorkflow: null
+      selectedWorkflow: null,
+      editingWorkflow: null,
+      editedName: ''
     };
   },
   watch: {
@@ -102,6 +122,58 @@ export default {
     },
     close() {
       this.$emit('close');
+      this.cancelEdit();
+    },
+    startEdit(workflow) {
+      this.editingWorkflow = workflow.filename;
+      this.editedName = workflow.name;
+      // Focus the input field after the DOM updates
+      this.$nextTick(() => {
+        // Check if nameInput is an array and handle accordingly
+        if (this.$refs.nameInput) {
+          const input = Array.isArray(this.$refs.nameInput)
+            ? this.$refs.nameInput[0]
+            : this.$refs.nameInput;
+          
+          if (input && typeof input.focus === 'function') {
+            input.focus();
+            // Select all text in the input field
+            input.select();
+          }
+        }
+      });
+    },
+    cancelEdit() {
+      this.editingWorkflow = null;
+      this.editedName = '';
+    },
+    async saveWorkflowName(filename) {
+      if (!this.editedName.trim()) {
+        // Don't allow empty names
+        return;
+      }
+      
+      try {
+        const response = await axios.put(`http://localhost:8000/workflows/${filename}/name`, {
+          name: this.editedName.trim()
+        });
+        
+        if (response.data.success) {
+          // Update the workflow name in the local list
+          const workflowIndex = this.workflows.findIndex(w => w.filename === filename);
+          if (workflowIndex !== -1) {
+            this.workflows[workflowIndex].name = this.editedName.trim();
+          }
+          
+          // Exit edit mode
+          this.cancelEdit();
+        } else {
+          this.error = 'Failed to update workflow name. Please try again.';
+        }
+      } catch (error) {
+        console.error('Error updating workflow name:', error);
+        this.error = 'Failed to update workflow name. Please try again.';
+      }
     }
   }
 };
@@ -182,9 +254,54 @@ export default {
   border-color: #1890ff;
 }
 
+.workflow-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.workflow-name-display {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
 .workflow-name {
   font-weight: bold;
+}
+
+.workflow-name-edit {
+  width: 100%;
+}
+
+.workflow-name-edit input {
+  width: 100%;
+  padding: 5px;
+  border: 1px solid #1890ff;
+  border-radius: 4px;
   margin-bottom: 5px;
+}
+
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+  margin-bottom: 5px;
+}
+
+.edit-button {
+  background: none;
+  border: none;
+  color: #1890ff;
+  cursor: pointer;
+  padding: 2px 5px;
+  font-size: 12px;
+}
+
+.edit-button:hover {
+  text-decoration: underline;
 }
 
 .workflow-description {

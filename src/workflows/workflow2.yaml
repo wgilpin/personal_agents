@@ -1,102 +1,81 @@
-nodes:
-  - 
-    id: node-1
-    type: act
-    position:
-      x: 150
-      y: 150
-    content: Start workflow 2
-    prompt: This is the first action in workflow 2
-
-  - 
-    id: node-2
-    type: act
-    position:
-      x: 350
-      y: 300
-    content: Process data
-    prompt: Process the input data
-
-  - 
-    id: node-3
-    type: choice
-    position:
-      x: 550
-      y: 450
-    content: Data valid?
-    prompt: Check if the processed data is valid
-
-  - 
-    id: node-4
-    type: act
-    position:
-      x: 350
-      y: 600
-    content: Handle valid data
-    prompt: Perform actions for valid data
-
-  - 
-    id: node-5
-    type: act
-    position:
-      x: 750
-      y: 600
-    content: Handle invalid data
-    prompt: Perform actions for invalid data
-
-  - 
-    id: node-6
-    type: terminal
-    position:
-      x: 550
-      y: 750
-    content: End workflow
-
 connections:
-  - 
-    from:
-      nodeId: node-1
-      position: bottom
-    to:
-      nodeId: node-2
-      position: top
-
-  - 
-    from:
-      nodeId: node-2
-      position: bottom
-    to:
-      nodeId: node-3
-      position: top
-
-  - 
-    from:
-      nodeId: node-3
-      position: yes
-    to:
-      nodeId: node-4
-      position: top
-
-  - 
-    from:
-      nodeId: node-3
-      position: no
-    to:
-      nodeId: node-5
-      position: top
-
-  - 
-    from:
-      nodeId: node-4
-      position: bottom
-    to:
-      nodeId: node-6
-      position: top
-
-  - 
-    from:
-      nodeId: node-5
-      position: bottom
-    to:
-      nodeId: node-6
-      position: top
+- from:
+    nodeId: node-1
+    position: bottom
+  to:
+    nodeId: node-2
+    position: top
+- from:
+    nodeId: node-2
+    position: bottom
+  to:
+    nodeId: node-3
+    position: top
+- from:
+    nodeId: node-3
+    position: true
+  to:
+    nodeId: node-4
+    position: top
+- from:
+    nodeId: node-3
+    position: false
+  to:
+    nodeId: node-5
+    position: top
+- from:
+    nodeId: node-4
+    position: bottom
+  to:
+    nodeId: node-6
+    position: top
+- from:
+    nodeId: node-5
+    position: bottom
+  to:
+    nodeId: node-6
+    position: top
+metadata:
+  name: Complex Data Processing Workflow
+nodes:
+- content: Start workflow 2
+  id: node-1
+  position:
+    x: 150
+    y: 150
+  prompt: This is the first action in workflow 2
+  type: act
+- content: Process data
+  id: node-2
+  position:
+    x: 350
+    y: 300
+  prompt: Process the input data
+  type: act
+- content: Data valid?
+  id: node-3
+  position:
+    x: 550
+    y: 450
+  prompt: Check if the processed data is valid
+  type: choice
+- content: Handle valid data
+  id: node-4
+  position:
+    x: 350
+    y: 600
+  prompt: Perform actions for valid data
+  type: act
+- content: Handle invalid data
+  id: node-5
+  position:
+    x: 750
+    y: 600
+  prompt: Perform actions for invalid data
+  type: act
+- content: End workflow
+  id: node-6
+  position:
+    x: 550
+    y: 750
+  type: terminal

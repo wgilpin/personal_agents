@@ -164,6 +164,10 @@ export default {
     convertFlowchartToYaml() {
       // Create a structured object for the flowchart
       const flowchart = {
+        // Add metadata section
+        metadata: {
+          name: '', // Empty by default, will be set by user later
+        },
         nodes: this.nodes.map(node => {
           // Create a clean node object
           const cleanNode = {
@@ -247,6 +251,12 @@ export default {
       
       // Reset the current flowchart
       this.createNewFlowchart();
+      
+      // Preserve metadata if it exists
+      if (workflowData.metadata) {
+        // We don't need to do anything with the metadata here
+        // It will be preserved when saving the workflow
+      }
       
       // Load the nodes from the workflow data
       if (workflowData.nodes && Array.isArray(workflowData.nodes)) {

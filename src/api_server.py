@@ -20,29 +20,39 @@ from plan_and_execute import PlanAndExecuteAgent
 load_dotenv()
 
 
-def extract_workflow_description(file_path: str) -> str:
+def extract_workflow_metadata(file_path: str) -> dict:
     """
-    Extract the description from a workflow file.
+    Extract metadata from a workflow file.
 
     Args:
         file_path: Path to the workflow file
 
     Returns:
-        The extracted description or an empty string if not found
+        A dictionary containing metadata (name, description)
     """
+    metadata = {"name": "", "description": ""}
+
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             content = yaml.safe_load(f)
 
-        # Get the first node with content as a description
-        if content and "nodes" in content and content["nodes"]:
+        # Check if metadata section exists
+        if content and "metadata" in content and isinstance(content["metadata"], dict):
+            if "name" in content["metadata"]:
+                metadata["name"] = content["metadata"]["name"]
+            if "description" in content["metadata"]:
+                metadata["description"] = content["metadata"]["description"]
+
+        # If no description in metadata, get the first node with content as a description
+        if not metadata["description"] and content and "nodes" in content and content["nodes"]:
             for node in content["nodes"]:
                 if node.get("content"):
-                    return node["content"]
+                    metadata["description"] = node["content"]
+                    break
     except Exception:
         pass
 
-    return ""
+    return metadata
 
 
 # Create FastAPI app
@@ -178,7 +188,7 @@ async def list_workflows() -> List[Dict[str, Any]]:
     List all available workflows from the workflows directory.
 
     Returns:
-        A list of workflow information including name and path.
+        A list of workflow information including name, filename, and description.
     """
     try:
         # Get the workflows directory path
@@ -196,12 +206,23 @@ async def list_workflows() -> List[Dict[str, Any]]:
                 file_path = os.path.join(workflows_dir, filename)
 
                 # Get basic file info
-                name = os.path.splitext(filename)[0]
+                default_name = os.path.splitext(filename)[0]
 
-                # Try to extract some metadata from the file
-                description = extract_workflow_description(file_path)
+                # Try to extract metadata from the file
+                metadata = extract_workflow_metadata(file_path)
 
-                workflows.append({"name": name, "filename": filename, "description": description})
+                # Use custom name if available, otherwise use filename
+                display_name = metadata["name"] if metadata["name"] else default_name
+                description = metadata["description"]
+
+                workflows.append(
+                    {
+                        "name": display_name,
+                        "filename": filename,
+                        "description": description,
+                        "default_name": default_name,
+                    }
+                )
 
         return workflows
 
@@ -295,6 +316,58 @@ async def execute_workflow(filename: str, request: WorkflowExecuteRequest) -> Di
     except Exception as e:
         # Handle all other exceptions
         error_message = f"An error occurred while executing workflow: {str(e)}"
+        print(f"\n\n{error_message}")
+        raise HTTPException(status_code=500, detail=error_message) from e
+
+
+class UpdateWorkflowNameRequest(BaseModel):
+    """Request model for updating a workflow name."""
+
+    name: str = Field(description="The new name for the workflow")
+
+
+@api.put("/workflows/{filename}/name", response_model=Dict[str, Any])
+async def update_workflow_name(filename: str, request: UpdateWorkflowNameRequest) -> Dict[str, Any]:
+    """
+    Update the name of a specific workflow.
+
+    Args:
+        filename: The name of the workflow file.
+        request: The request containing the new name.
+
+    Returns:
+        A dictionary indicating success or failure.
+    """
+    try:
+        # Get the workflow file path
+        workflow_path = os.path.join(os.path.dirname(__file__), "workflows", filename)
+
+        # Check if the file exists
+        if not os.path.exists(workflow_path):
+            raise HTTPException(status_code=404, detail=f"Workflow file '{filename}' not found")
+
+        # Read and parse the workflow file
+        with open(workflow_path, "r", encoding="utf-8") as f:
+            workflow_data = yaml.safe_load(f)
+
+        # Create or update the metadata section
+        if "metadata" not in workflow_data or not isinstance(workflow_data["metadata"], dict):
+            workflow_data["metadata"] = {}
+
+        workflow_data["metadata"]["name"] = request.name
+
+        # Write the updated workflow data back to the file
+        with open(workflow_path, "w", encoding="utf-8") as f:
+            yaml.dump(workflow_data, f)
+
+        return {"success": True, "message": "Workflow name updated successfully"}
+
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # Handle all other exceptions
+        error_message = f"An error occurred while updating workflow name: {str(e)}"
         print(f"\n\n{error_message}")
         raise HTTPException(status_code=500, detail=error_message) from e
 
