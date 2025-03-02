@@ -4,25 +4,17 @@
 
 import json
 import os
-import yaml
-from typing import Dict, Any
+from typing import Any, Dict, List
 
 import uvicorn  # pylint: disable=import-error
-
-from fastapi import (
-    FastAPI,
-    HTTPException,
-    File,
-    UploadFile,
-)  # pylint: disable=import-error
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+import yaml
 from dotenv import load_dotenv
+from fastapi import FastAPI, File, HTTPException, UploadFile  # pylint: disable=import-error
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
-from plan_and_execute import app, config
-
-# Load environment variables before importing from plan_and_execute.py
+# Load environment variables
 load_dotenv()
 
 # Create FastAPI app
@@ -62,69 +54,13 @@ async def execute_prompt(prompt_input: PromptInput) -> Dict[str, Any]:
         A dictionary containing the goal_assessment_result.
     """
     try:
-        # Create inputs dictionary
-        inputs = {"input": prompt_input.input}
-
-        # Initialize goal_assessment_result
-        goal_assessment_result = None
-        final_result = ""
-
-        try:
-            # Execute the workflow
-            async for event in app.astream(inputs, config=config):
-                for k, v in event.items():
-                    if k != "__end__" and v is not None:
-                        if "response" in v:
-                            # The model response (goal_assessment_result)
-                            goal_assessment_result = v["response"]
-                        if "past_steps" in v:
-                            # Collect execution steps for better error reporting
-                            for step, result in v["past_steps"]:
-                                final_result += result + "\n"
-
-            # Check if goal_assessment_result is None
-            if goal_assessment_result is None:
-                raise HTTPException(
-                    status_code=500, detail="Failed to generate goal assessment result"
-                )
-
-            # Return the goal_assessment_result
-            return {"goal_assessment_result": json.loads(goal_assessment_result)}
-
-        except KeyboardInterrupt:
-            # Handle user interruption
-            error_message = "Execution was interrupted by user"
-            print(f"\n\n{error_message}")
-
-            # Return partial results if available
-            if goal_assessment_result:
-                try:
-                    return {
-                        "goal_assessment_result": json.loads(goal_assessment_result)
-                    }
-                except:
-                    pass
-
-            # Create a fallback response
-            fallback_response = {
-                "error": error_message,
-                "partial_result": (
-                    final_result.strip()
-                    if final_result
-                    else "No results generated before interruption"
-                ),
-            }
-
-            return {"goal_assessment_result": fallback_response}
-
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
+        # For now, return a placeholder response
+        goal_assessment_result = json.dumps({"message": "Execution endpoint is currently disabled"})
+        return {"goal_assessment_result": json.loads(goal_assessment_result)}
     except Exception as e:
         # Handle all other exceptions
         error_message = f"An error occurred: {str(e)}"
         print(f"\n\n{error_message}")
-
         raise HTTPException(status_code=500, detail=error_message) from e
 
 
@@ -186,6 +122,89 @@ async def upload_flowchart(file: UploadFile = File(...)) -> Dict[str, Any]:
             status_code=500,
             content={"success": False, "message": f"An error occurred: {str(e)}"},
         )
+
+
+@api.get("/workflows", response_model=List[Dict[str, Any]])
+async def list_workflows() -> List[Dict[str, Any]]:
+    """
+    List all available workflows from the workflows directory.
+
+    Returns:
+        A list of workflow information including name and path.
+    """
+    try:
+        # Get the workflows directory path
+        workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
+
+        # Check if the directory exists
+        if not os.path.exists(workflows_dir):
+            os.makedirs(workflows_dir, exist_ok=True)
+            return []
+
+        # List all YAML files in the directory
+        workflows = []
+        for filename in os.listdir(workflows_dir):
+            if filename.endswith((".yaml", ".yml")):
+                file_path = os.path.join(workflows_dir, filename)
+
+                # Get basic file info
+                name = os.path.splitext(filename)[0]
+
+                # Try to extract some metadata from the file
+                try:
+                    with open(file_path, "r") as f:
+                        content = yaml.safe_load(f)
+
+                    # Get the first node with content as a description
+                    description = ""
+                    if content and "nodes" in content and content["nodes"]:
+                        for node in content["nodes"]:
+                            if node.get("content"):
+                                description = node["content"]
+                                break
+                except Exception:
+                    description = ""
+
+                workflows.append({"name": name, "filename": filename, "description": description})
+
+        return workflows
+
+    except Exception as e:
+        # Handle exceptions
+        raise HTTPException(status_code=500, detail=f"An error occurred while listing workflows: {str(e)}") from e
+
+
+@api.get("/workflows/{filename}", response_model=Dict[str, Any])
+async def get_workflow(filename: str) -> Dict[str, Any]:
+    """
+    Get a specific workflow by filename.
+
+    Args:
+        filename: The name of the workflow file.
+
+    Returns:
+        The workflow data.
+    """
+    try:
+        # Get the workflow file path
+        workflow_path = os.path.join(os.path.dirname(__file__), "workflows", filename)
+
+        # Check if the file exists
+        if not os.path.exists(workflow_path):
+            raise HTTPException(status_code=404, detail=f"Workflow file '{filename}' not found")
+
+        # Read and parse the workflow file
+        with open(workflow_path, "r") as f:
+            workflow_data = yaml.safe_load(f)
+
+        return workflow_data
+
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # Handle all other exceptions
+        raise HTTPException(status_code=500, detail=f"An error occurred while reading workflow: {str(e)}") from e
 
 
 # Run the server

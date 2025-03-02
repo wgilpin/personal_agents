@@ -1,0 +1,76 @@
+nodes:
+  - 
+    id: node-1
+    type: act
+    position:
+      x: 120
+      y: 120
+    content: Start workflow 1
+    prompt: This is the first action in workflow 1
+
+  - 
+    id: node-2
+    type: choice
+    position:
+      x: 369
+      y: 320
+    content: Is condition met?
+    prompt: Check if the condition is met
+
+  - 
+    id: node-3
+    type: terminal
+    position:
+      x: 576
+      y: 588
+    content: End workflow (No)
+
+  - 
+    id: node-4
+    type: act
+    position:
+      x: 211
+      y: 638
+    content: Perform action
+    prompt: Perform the required action
+
+  - 
+    id: node-5
+    type: terminal
+    position:
+      x: 297
+      y: 830
+    content: End workflow (Yes)
+
+connections:
+  - 
+    from:
+      nodeId: node-2
+      position: no
+    to:
+      nodeId: node-3
+      position: top
+
+  - 
+    from:
+      nodeId: node-1
+      position: bottom
+    to:
+      nodeId: node-2
+      position: top
+
+  - 
+    from:
+      nodeId: node-2
+      position: yes
+    to:
+      nodeId: node-4
+      position: top
+
+  - 
+    from:
+      nodeId: node-4
+      position: bottom
+    to:
+      nodeId: node-5
+      position: top

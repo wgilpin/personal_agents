@@ -3,7 +3,8 @@
     <Toolbar 
       @create-node="createNode" 
       @new-flowchart="createNewFlowchart" 
-      @publish-flowchart="publishFlowchart" 
+      @publish-flowchart="publishFlowchart"
+      @load-workflow-click="showWorkflowModal = true"
     />
     <div class="instructions">
       <p>To create a connection: Click on a connection point (white circle) of one node, then click on a connection point of another node.</p>
@@ -19,26 +20,35 @@
         @update-connections="updateConnections"
       />
     </div>
+    
+    <WorkflowModal
+      :show="showWorkflowModal"
+      @close="showWorkflowModal = false"
+      @load-workflow="loadWorkflow"
+    />
   </div>
 </template>
 
 <script>
 import Toolbar from './components/Toolbar.vue';
 import FlowchartCanvas from './components/FlowchartCanvas.vue';
+import WorkflowModal from './components/WorkflowModal.vue';
 import axios from 'axios';
 
 export default {
   name: 'App',
   components: {
     Toolbar,
-    FlowchartCanvas
+    FlowchartCanvas,
+    WorkflowModal
   },
   data() {
     return {
       nodes: [],
       connections: [],
       nextNodeId: 1,
-      lastNodePosition: { x: 100, y: 100 }
+      lastNodePosition: { x: 100, y: 100 },
+      showWorkflowModal: false
     };
   },
   methods: {
@@ -236,6 +246,63 @@ export default {
       downloadLink.href = URL.createObjectURL(new Blob([yamlContent], { type: 'text/yaml' }));
       downloadLink.download = 'flowchart.yaml';
       downloadLink.click();
+    },
+    
+    loadWorkflow(workflowData) {
+      // Reset the current flowchart
+      this.createNewFlowchart();
+      
+      // Load the nodes from the workflow data
+      if (workflowData.nodes && Array.isArray(workflowData.nodes)) {
+        // Find the highest node ID to set nextNodeId correctly
+        let highestId = 0;
+        
+        workflowData.nodes.forEach(node => {
+          // Extract the numeric part of the node ID
+          const idMatch = node.id.match(/node-(\d+)/);
+          if (idMatch && idMatch[1]) {
+            const idNum = parseInt(idMatch[1], 10);
+            highestId = Math.max(highestId, idNum);
+          }
+          
+          // Add the node to the canvas
+          this.nodes.push({
+            id: node.id,
+            type: node.type,
+            x: node.position.x,
+            y: node.position.y,
+            content: node.content || '',
+            prompt: node.prompt || null
+          });
+        });
+        
+        // Set the next node ID
+        this.nextNodeId = highestId + 1;
+        
+        // Update the last node position
+        if (workflowData.nodes.length > 0) {
+          const lastNode = workflowData.nodes[workflowData.nodes.length - 1];
+          this.lastNodePosition = {
+            x: lastNode.position.x,
+            y: lastNode.position.y
+          };
+        }
+      }
+      
+      // Load the connections from the workflow data
+      if (workflowData.connections && Array.isArray(workflowData.connections)) {
+        workflowData.connections.forEach(conn => {
+          this.createConnection(
+            conn.from.nodeId,
+            conn.from.position,
+            conn.to.nodeId,
+            conn.to.position
+          );
+        });
+      }
+      
+      // Show success message
+      alert('Workflow loaded successfully!');
     }
   }
 };
