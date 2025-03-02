@@ -17,6 +17,7 @@ def main():
     test_files = [
         os.path.join(script_dir, "test_plan_and_execute.py"),
         os.path.join(script_dir, "test_integration.py"),
+        os.path.join(script_dir, "test_api_server.py"),
     ]
 
     print("Running tests for the Plan and Execute agent...")

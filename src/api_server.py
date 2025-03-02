@@ -4,7 +4,7 @@
 
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import uvicorn  # pylint: disable=import-error
 import yaml
@@ -12,7 +12,9 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile  # pylint: disable=import-error
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from plan_and_execute import PlanAndExecuteAgent
 
 # Load environment variables
 load_dotenv()
@@ -66,6 +68,26 @@ class ApiResponse(BaseModel):
     """Response model for the execute endpoint."""
 
     goal_assessment_result: Any
+
+
+class WorkflowExecuteRequest(BaseModel):
+    """Request model for the workflow execution endpoint."""
+
+    input: str = Field(description="The input text to process with the workflow")
+    config: Optional[Dict[str, Any]] = Field(
+        default=None, description="Optional configuration for the workflow execution"
+    )
+
+
+class WorkflowExecuteResponse(BaseModel):
+    """Response model for the workflow execution endpoint."""
+
+    final_result: str = Field(description="The final result of the workflow execution")
+    goal_assessment_result: Optional[str] = Field(default=None, description="The goal assessment result if available")
+    goal_assessment_feedback: Optional[str] = Field(
+        default=None, description="Feedback on the goal assessment if available"
+    )
+    error: Optional[str] = Field(default=None, description="Error message if execution failed")
 
 
 @api.post("/execute", response_model=ApiResponse)
@@ -219,6 +241,62 @@ async def get_workflow(filename: str) -> Dict[str, Any]:
     except Exception as e:
         # Handle all other exceptions
         raise HTTPException(status_code=500, detail=f"An error occurred while reading workflow: {str(e)}") from e
+
+
+@api.post("/workflows/{filename}/execute", response_model=WorkflowExecuteResponse)
+async def execute_workflow(filename: str, request: WorkflowExecuteRequest) -> Dict[str, Any]:
+    """
+    Execute a specific workflow by filename.
+
+    Args:
+        filename: The name of the workflow file.
+        request: The execution request containing input and optional configuration.
+
+    Returns:
+        The results of the workflow execution.
+    """
+    try:
+        # Get the workflow file path
+        workflow_path = os.path.join(os.path.dirname(__file__), "workflows", filename)
+
+        # Check if the file exists
+        if not os.path.exists(workflow_path):
+            raise HTTPException(status_code=404, detail=f"Workflow file '{filename}' not found")
+
+        # Create a temporary flowchart file for the agent to use
+        flowchart_dir = os.path.join(os.path.dirname(__file__), "flowcharts")
+        os.makedirs(flowchart_dir, exist_ok=True)
+        flowchart_path = os.path.join(flowchart_dir, "current_flowchart.yaml")
+
+        # Read the workflow file
+        with open(workflow_path, "r", encoding="utf-8") as f:
+            workflow_data = yaml.safe_load(f)
+
+        # Write to the current_flowchart.yaml file
+        with open(flowchart_path, "w", encoding="utf-8") as f:
+            yaml.dump(workflow_data, f)
+
+        # Create the agent
+        agent = PlanAndExecuteAgent()
+
+        # Execute the workflow
+        result = await agent.run(request.input, request.config)
+
+        return {
+            "final_result": result.get("final_result", ""),
+            "goal_assessment_result": result.get("goal_assessment_result"),
+            "goal_assessment_feedback": result.get("goal_assessment_feedback"),
+            "error": result.get("error"),
+        }
+
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # Handle all other exceptions
+        error_message = f"An error occurred while executing workflow: {str(e)}"
+        print(f"\n\n{error_message}")
+        raise HTTPException(status_code=500, detail=error_message) from e
 
 
 # Run the server when this file is executed directly
