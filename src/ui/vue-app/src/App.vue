@@ -5,6 +5,7 @@
       @new-flowchart="createNewFlowchart" 
       @publish-flowchart="publishFlowchart"
       @load-workflow-click="showWorkflowModal = true"
+      @start-workflow-click="startWorkflow"
     />
     <div class="instructions">
       <p>To create a connection: Click on a connection point (white circle) of one node, then click on a connection point of another node.</p>
@@ -26,6 +27,13 @@
       @close="showWorkflowModal = false"
       @load-workflow="loadWorkflow"
     />
+
+    <WorkflowStatusModal
+      :show="workflowStatusModalVisible"
+      :message="workflowStatusMessage"
+      :isError="workflowStatusIsError"
+      @close="workflowStatusModalVisible = false"
+    />
   </div>
 </template>
 
@@ -33,6 +41,7 @@
 import Toolbar from './components/Toolbar.vue';
 import FlowchartCanvas from './components/FlowchartCanvas.vue';
 import WorkflowModal from './components/WorkflowModal.vue';
+import WorkflowStatusModal from './components/WorkflowStatusModal.vue';
 import axios from 'axios';
 
 export default {
@@ -40,18 +49,48 @@ export default {
   components: {
     Toolbar,
     FlowchartCanvas,
-    WorkflowModal
+    WorkflowModal,
+    WorkflowStatusModal
   },
-  data() {
+  data () {
     return {
       nodes: [],
       connections: [],
       nextNodeId: 1,
       lastNodePosition: { x: 100, y: 100 },
-      showWorkflowModal: false
-    };
+      showWorkflowModal: false,
+      workflowStatusModalVisible: false,
+      workflowStatusMessage: '',
+      workflowStatusIsError: false
+    }
   },
   methods: {
+    startWorkflow () {
+      this.workflowStatusModalVisible = true
+      this.workflowStatusMessage = 'Workflow running...'
+      this.workflowStatusIsError = false
+
+      // Get the current workflow filename from the first workflow in the list
+      // In a real application, you would want to get the currently selected workflow
+      axios.get('http://localhost:8000/workflows')
+        .then(response => {
+          if (response.data && response.data.length > 0) {
+            const filename = response.data[0].filename
+            return axios.post(`http://localhost:8000/workflows/${filename}/execute`, {
+              input: "Execute workflow"
+            })
+          } else {
+            throw new Error('No workflows available')
+          }
+        })
+        .then(response => {
+          this.workflowStatusMessage = 'Workflow completed successfully!\n' + JSON.stringify(response.data, null, 2)
+        })
+        .catch(error => {
+          this.workflowStatusMessage = 'Workflow failed!\n' + error.message
+          this.workflowStatusIsError = true
+        })
+    },
     createNode(type, content = '', prompt = '') {
       // Position new node 20px right and 20px down from the last node
       const x = this.lastNodePosition.x + 20;

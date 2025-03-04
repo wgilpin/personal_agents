@@ -17,15 +17,16 @@
       <button id="load-workflow" @click="$emit('load-workflow-click')" title="Load Workflow"><i class="material-icons">file_open</i></button>
       <button id="new-flowchart" @click="$emit('new-flowchart')" title="New Workflow"><i class="material-icons">add_box</i></button>
       <button id="publish-flowchart" @click="$emit('publish-flowchart')" title="Publish Workflow"><i class="material-icons">save</i></button>
-    </div>
+      <button id="start-workflow" @click="$emit('start-workflow-click')" title="Start Workflow"><i class="material-icons">play_arrow</i></button>
   </div>
+</div>
 </template>
 
 <script>
 export default {
   name: 'Toolbar',
-  emits: ['create-node', 'new-flowchart', 'publish-flowchart', 'load-workflow-click'],
-  data() {
+  emits: ['create-node', 'new-flowchart', 'publish-flowchart', 'load-workflow-click', 'start-workflow-click'],
+  data () {
     return {
       nodeTypes: [
         { type: 'act', label: 'Action' },
@@ -117,6 +118,16 @@ button:hover {
 #publish-flowchart:hover {
   color: #FF9800; /* Publish Flowchart button hover text color */
   background-color: #096dd9;
+}
+
+#start-workflow {
+  background-color: #28a745; /* Bootstrap success color */
+  color: white;
+  border-color: #28a745;
+}
+
+#start-workflow:hover {
+  background-color: #218838; /* Darker shade for hover */
 }
 
 #load-workflow {
