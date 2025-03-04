@@ -17,6 +17,22 @@
             "request": "launch",
             "program": "src/api_server.py",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug Vue App",
+            "type": "chrome",
+            "request": "launch",
+            "url": "http://localhost:8081",
+            "webRoot": "${workspaceFolder}/src/ui/vue-app",
+            "sourceMapPathOverrides": {
+                "webpack:///src/*": "${webRoot}/src/*",
+                "webpack:///./~/*": "${webRoot}/node_modules/*",
+                "webpack:///./*": "${webRoot}/*",
+                "webpack:///*": "*"
+            },
+            "sourceMaps": true,
+            "preLaunchTask": "Start Vue Dev Server",
+            "timeout": 30000
         }
     ]
 }
