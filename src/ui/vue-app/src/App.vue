@@ -30,8 +30,10 @@
 
     <WorkflowStatusModal
       :show="workflowStatusModalVisible"
+      :title="workflowStatusTitle"
       :message="workflowStatusMessage"
       :isError="workflowStatusIsError"
+      :isLoading="workflowStatusIsLoading"
       @close="workflowStatusModalVisible = false"
     />
   </div>
@@ -60,16 +62,20 @@ export default {
       lastNodePosition: { x: 100, y: 100 },
       showWorkflowModal: false,
       workflowStatusModalVisible: false,
+      workflowStatusTitle: '',
       workflowStatusMessage: '',
-      workflowStatusIsError: false
+      workflowStatusIsError: false,
+      workflowStatusIsLoading: true
     }
   },
   methods: {
     startWorkflow () {
       // DEBUGGING: Place a breakpoint on this line to debug workflow execution
       this.workflowStatusModalVisible = true
-      this.workflowStatusMessage = 'Workflow running...'
+      this.workflowStatusTitle = 'Workflow Running'
+      this.workflowStatusMessage = 'Please wait while the workflow executes...'
       this.workflowStatusIsError = false
+      this.workflowStatusIsLoading = true
 
       // First try to get the current flowchart from src/flowcharts/
       axios.get('http://localhost:8000/flowchart/current')
@@ -150,11 +156,15 @@ export default {
             }
           }
           
-          this.workflowStatusMessage = 'Workflow completed successfully!\n' + responseText;
+          this.workflowStatusTitle = 'Workflow Completed Successfully';
+          this.workflowStatusMessage = responseText;
+          this.workflowStatusIsLoading = false;
         })
         .catch(error => {
-          this.workflowStatusMessage = 'Workflow failed!\n' + error.message
-          this.workflowStatusIsError = true
+          this.workflowStatusTitle = 'Workflow Failed!';
+          this.workflowStatusMessage = error.message;
+          this.workflowStatusIsError = true;
+          this.workflowStatusIsLoading = false;
         })
     },
     createNode(type, content = '', prompt = '') {

@@ -3,14 +3,18 @@
     <div class="modal-content">
       <span class="close-button" @click="$emit('close')">&times;</span>
       <div class="modal-body">
+        <h3 class="modal-title">{{ title }}</h3>
         <p>{{ message }}</p>
-        <div v-if="!isError" class="loading-animation">
-          <!-- Add loading animation here -->
+        <div v-if="isLoading" class="loading-animation">
+          <!-- Loading animation -->
           <div class="spinner"></div>
         </div>
-        <div v-else class="error-icon">
-          <!-- Add error icon here -->
+        <div v-else-if="isError" class="error-icon">
+          <!-- Error icon -->
           <i class="material-icons">error</i>
+        </div>
+        <div class="modal-footer">
+          <button class="close-btn" @click="$emit('close')">Close</button>
         </div>
       </div>
     </div>
@@ -22,8 +26,16 @@ export default {
   name: 'WorkflowStatusModal',
   props: {
     show: Boolean,
+    title: {
+      type: String,
+      default: 'Workflow Status'
+    },
     message: String,
-    isError: Boolean
+    isError: Boolean,
+    isLoading: {
+      type: Boolean,
+      default: true
+    }
   },
   emits: ['close']
 };
@@ -71,6 +83,16 @@ export default {
   padding: 20px;
 }
 
+.modal-title {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: #333;
+  font-size: 1.5em;
+  font-weight: bold;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+}
+
 .loading-animation {
   display: flex;
   justify-content: center;
@@ -97,5 +119,26 @@ export default {
   margin-top: 20px;
   color: red;
   font-size: 40px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 30px;
+}
+
+.close-btn {
+  background-color: #4CAF50;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.3s;
+}
+
+.close-btn:hover {
+  background-color: #45a049;
 }
 </style>
