@@ -176,18 +176,31 @@ async def upload_flowchart(file: UploadFile = File(...)) -> Dict[str, Any]:
                 content={"success": False, "message": f"Invalid YAML format: {str(e)}"},
             )
 
-        # Save the file to a specific location
-        flowchart_dir = os.path.join(os.path.dirname(__file__), "flowcharts")
-        os.makedirs(flowchart_dir, exist_ok=True)
+        # Save the file to the workflows directory
+        workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
+        os.makedirs(workflows_dir, exist_ok=True)
 
-        flowchart_path = os.path.join(flowchart_dir, "current_flowchart.yaml")
+        # Get the flowchart name from metadata
+        flowchart_name = flowchart_data.get("metadata", {}).get("name", "Untitled")
+        # Create a safe filename from the flowchart name
+        safe_filename = "".join(c if c.isalnum() else "_" for c in flowchart_name) + ".yaml"
 
-        with open(flowchart_path, "wb") as f:
+        # Save the file with its name in the workflows directory
+        workflow_path = os.path.join(workflows_dir, safe_filename)
+
+        # Also save as current_flowchart.yaml in the workflows directory for backward compatibility
+        current_flowchart_path = os.path.join(workflows_dir, "current_flowchart.yaml")
+
+        with open(workflow_path, "wb") as f:
+            f.write(content)
+
+        # Also save as current_flowchart.yaml for backward compatibility
+        with open(current_flowchart_path, "wb") as f:
             f.write(content)
 
         return {
             "success": True,
-            "message": f"Flowchart saved successfully at {flowchart_path}",
+            "message": f"Flowchart '{flowchart_name}' saved successfully",
         }
 
     except Exception as e:
@@ -201,14 +214,14 @@ async def upload_flowchart(file: UploadFile = File(...)) -> Dict[str, Any]:
 @api.get("/flowchart/current", response_model=Dict[str, Any])
 async def get_current_flowchart() -> Dict[str, Any]:
     """
-    Get the current flowchart from the flowcharts directory.
+    Get the current flowchart from the workflows directory.
 
     Returns:
         The current flowchart data.
     """
     try:
         # Get the flowchart file path
-        flowchart_path = os.path.join(os.path.dirname(__file__), "flowcharts", "current_flowchart.yaml")
+        flowchart_path = os.path.join(os.path.dirname(__file__), "workflows", "current_flowchart.yaml")
 
         # Check if the file exists
         if not os.path.exists(flowchart_path):
@@ -241,7 +254,7 @@ async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str
     """
     try:
         # Get the flowchart file path
-        flowchart_path = os.path.join(os.path.dirname(__file__), "flowcharts", "current_flowchart.yaml")
+        flowchart_path = os.path.join(os.path.dirname(__file__), "workflows", "current_flowchart.yaml")
 
         # Check if the file exists
         if not os.path.exists(flowchart_path):
@@ -311,9 +324,8 @@ async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str
 
                     # Add the result to the final result
                     if result.get("final_result"):
-                        node_result = result["final_result"]
-                        final_result += f"Node {node_id} ({node_content}): {node_result}\n"
-                        print(f"Node {node_id} result: {node_result}")
+                        final_result = result["goal_assessment_result"]
+                        print(f"Node {node_id} result: {final_result}")
 
                 elif node_type == "choice":
                     # For choice nodes, make a simple LLM call to determine which path to take

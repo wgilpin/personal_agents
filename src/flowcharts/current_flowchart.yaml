@@ -8,6 +8,6 @@ nodes:
       x: 120
       y: 120
     content: 
-    prompt: Who's the Queen?
+    prompt: Who's the queen?
 
 connections:

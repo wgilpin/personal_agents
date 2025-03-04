@@ -66,6 +66,7 @@ export default {
   },
   methods: {
     startWorkflow () {
+      // DEBUGGING: Place a breakpoint on this line to debug workflow execution
       this.workflowStatusModalVisible = true
       this.workflowStatusMessage = 'Workflow running...'
       this.workflowStatusIsError = false
@@ -130,7 +131,26 @@ export default {
             })
         })
         .then(response => {
-          this.workflowStatusMessage = 'Workflow completed successfully!\n' + JSON.stringify(response.data, null, 2)
+          // Extract response_text from the response data
+          let responseText = 'Completed';
+          
+          // First check if response_text exists directly in response.data
+          if (response.data?.response_text) {
+            responseText = response.data.response_text;
+          }
+          // Then check if it's in final_result as a JSON string
+          else if (response.data?.final_result) {
+            try {
+              const finalResult = JSON.parse(response.data.final_result);
+              if (finalResult?.response_text) {
+                responseText = finalResult.response_text;
+              }
+            } catch (e) {
+              console.error('Error parsing final_result:', e);
+            }
+          }
+          
+          this.workflowStatusMessage = 'Workflow completed successfully!\n' + responseText;
         })
         .catch(error => {
           this.workflowStatusMessage = 'Workflow failed!\n' + error.message

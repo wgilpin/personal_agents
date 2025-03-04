@@ -97,7 +97,7 @@ export default {
       
       try {
         const response = await axios.get('http://localhost:8000/workflows');
-        this.workflows = response.data;
+        this.workflows = response.data.filter(workflow => workflow.filename !== 'current_flowchart.yaml');
       } catch (error) {
         console.error('Error fetching workflows:', error);
         this.error = 'Failed to load workflows. Please try again.';
