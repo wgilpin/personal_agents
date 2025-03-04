@@ -76,9 +76,29 @@ export default {
         .then(response => {
           if (response.data && response.data.length > 0) {
             const filename = response.data[0].filename
-            return axios.post(`http://localhost:8000/workflows/${filename}/execute`, {
-              input: "Execute workflow"
-            })
+            
+            // First get the workflow data to extract the first node's prompt
+            return axios.get(`http://localhost:8000/workflows/${filename}`)
+              .then(workflowResponse => {
+                const workflowData = workflowResponse.data
+                
+                // Find the first action node (type 'act') to get its prompt
+                let nodePrompt = "Execute workflow" // Default fallback
+                
+                if (workflowData.nodes && Array.isArray(workflowData.nodes)) {
+                  // Find the first node in the workflow (usually the start node)
+                  const firstNode = workflowData.nodes.find(node => node.type === 'act')
+                  
+                  if (firstNode && firstNode.prompt) {
+                    nodePrompt = firstNode.prompt
+                  }
+                }
+                
+                // Now execute the workflow with the node's prompt as input
+                return axios.post(`http://localhost:8000/workflows/${filename}/execute`, {
+                  input: nodePrompt
+                })
+              })
           } else {
             throw new Error('No workflows available')
           }
@@ -173,8 +193,17 @@ export default {
     },
     
     publishFlowchart() {
-      // Convert flowchart to YAML format
-      const flowchartData = this.convertFlowchartToYaml();
+      // Prompt the user for a flowchart name
+      const flowchartName = prompt('Enter a name for your flowchart:', 'My Flowchart');
+      
+      // If the user cancels, return
+      if (!flowchartName) {
+        alert('Flowchart name is required.');
+        return;
+      }
+      
+      // Convert flowchart to YAML format with the provided name
+      const flowchartData = this.convertFlowchartToYaml(flowchartName);
       
       // Create a Blob with the YAML content
       const blob = new Blob([flowchartData], { type: 'text/yaml' });
@@ -200,12 +229,12 @@ export default {
         });
     },
     
-    convertFlowchartToYaml() {
+    convertFlowchartToYaml(flowchartName) {
       // Create a structured object for the flowchart
       const flowchart = {
         // Add metadata section
         metadata: {
-          name: '', // Empty by default, will be set by user later
+          name: flowchartName || 'Untitled Flowchart', // Use provided name or default
         },
         nodes: this.nodes.map(node => {
           // Create a clean node object

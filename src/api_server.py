@@ -153,7 +153,20 @@ async def upload_flowchart(file: UploadFile = File(...)) -> Dict[str, Any]:
 
         # Parse the YAML content to validate it
         try:
-            _ = yaml.safe_load(content)
+            flowchart_data = yaml.safe_load(content)
+            # Validate flowchart name
+            if not flowchart_data.get("metadata", {}).get("name"):
+                return JSONResponse(
+                    status_code=400,
+                    content={"success": False, "message": "Flowchart must have a name in metadata"},
+                )
+            # Validate node commands
+            for node in flowchart_data.get("nodes", []):
+                if node.get("type") == "act" and not node.get("prompt"):
+                    return JSONResponse(
+                        status_code=400,
+                        content={"success": False, "message": f"Node {node.get('id')} must have a command"},
+                    )
         except yaml.YAMLError as e:
             return JSONResponse(
                 status_code=400,
@@ -301,6 +314,7 @@ async def execute_workflow(filename: str, request: WorkflowExecuteRequest) -> Di
         agent = PlanAndExecuteAgent()
 
         # Execute the workflow
+        print(f"Received request.input: {request.input}")
         result = await agent.run(request.input, request.config)
 
         return {

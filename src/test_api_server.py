@@ -214,5 +214,31 @@ def test_update_workflow_name(mock_workflow_file):
     assert test_workflow["name"] == new_name
 
 
+@pytest.mark.asyncio
+async def test_upload_flowchart_missing_name():
+    """Test uploading a flowchart without a name in metadata"""
+    flowchart_data = {"nodes": [{"id": "node1", "type": "act", "prompt": "echo Hello World"}], "connections": []}
+    response = client.post(
+        "/flowchart", files={"file": ("flowchart.yaml", yaml.dump(flowchart_data), "application/x-yaml")}
+    )
+    assert response.status_code == 400
+    assert response.json()["message"] == "Flowchart must have a name in metadata"
+
+
+@pytest.mark.asyncio
+async def test_upload_flowchart_missing_command():
+    """Test uploading a flowchart with an action node missing a command"""
+    flowchart_data = {
+        "metadata": {"name": "Test Flowchart"},
+        "nodes": [{"id": "node1", "type": "act"}],
+        "connections": [],
+    }
+    response = client.post(
+        "/flowchart", files={"file": ("flowchart.yaml", yaml.dump(flowchart_data), "application/x-yaml")}
+    )
+    assert response.status_code == 400
+    assert response.json()["message"] == "Node node1 must have a command"
+
+
 if __name__ == "__main__":
     pytest.main(["-xvs", "test_api_server.py"])
