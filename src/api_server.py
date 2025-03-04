@@ -162,11 +162,10 @@ async def upload_flowchart(file: UploadFile = File(...)) -> Dict[str, Any]:
                 )
             # Validate node commands
             for node in flowchart_data.get("nodes", []):
-                if node.get("type") == "act" and not node.get("prompt"):
-                    return JSONResponse(
-                        status_code=400,
-                        content={"success": False, "message": f"Node {node.get('id')} must have a command"},
-                    )
+                # For action nodes, ensure they have a prompt field that's not None
+                if node.get("type") == "act" and ("prompt" not in node or node.get("prompt") is None):
+                    # Add an empty prompt field if it's missing or None
+                    node["prompt"] = ""
         except yaml.YAMLError as e:
             return JSONResponse(
                 status_code=400,

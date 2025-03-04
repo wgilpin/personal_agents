@@ -6,7 +6,7 @@
       :key="node.id" 
       :node="node"
       @delete-node="$emit('delete-node', $event)"
-      @update-node="$emit('update-node', $event[0], $event[1])"
+      @update-node="(nodeId, updates) => $emit('update-node', nodeId, updates)"
       @node-drag-start="handleNodeDragStart"
       @connection-start="handleConnectionStart"
     />

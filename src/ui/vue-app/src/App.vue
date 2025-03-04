@@ -140,9 +140,11 @@ export default {
     },
     
     updateNode(nodeId, updates) {
+      console.log('updateNode called with nodeId:', nodeId, 'updates:', updates, 'typeof nodeId:', typeof nodeId, 'typeof updates:', typeof updates);
       const nodeIndex = this.nodes.findIndex(n => n.id === nodeId);
       if (nodeIndex !== -1) {
         this.nodes[nodeIndex] = { ...this.nodes[nodeIndex], ...updates };
+        console.log('Node updated:', JSON.stringify(this.nodes[nodeIndex]));
         
         // If position was updated, update last node position
         if (updates.x !== undefined && updates.y !== undefined) {
@@ -205,6 +207,10 @@ export default {
       // Convert flowchart to YAML format with the provided name
       const flowchartData = this.convertFlowchartToYaml(flowchartName);
       
+      // Log the nodes before conversion
+      console.log('Nodes before YAML conversion:', JSON.stringify(this.nodes, null, 2));
+      console.log('YAML data being sent to API:', flowchartData);
+      
       // Create a Blob with the YAML content
       const blob = new Blob([flowchartData], { type: 'text/yaml' });
       
@@ -249,8 +255,10 @@ export default {
           };
           
           // Add prompt for action and choice nodes
-          if ((node.type === 'act' || node.type === 'choice') && node.prompt) {
-            cleanNode.prompt = node.prompt;
+          if (node.type === 'act' || node.type === 'choice') {
+            console.log(`Node ${node.id} prompt before cleaning:`, node.prompt);
+            cleanNode.prompt = node.prompt || '';
+            console.log(`Node ${node.id} prompt after cleaning:`, cleanNode.prompt);
           }
           
           return cleanNode;
@@ -286,9 +294,13 @@ export default {
       } else if (typeof obj === 'object' && obj !== null) {
         // Handle objects
         for (const [key, value] of Object.entries(obj)) {
-          if (value === null || value === undefined) {
-            // Skip null or undefined values
+          // Don't skip null values for the prompt field
+          if ((key !== 'prompt' && (value === null || value === undefined))) {
+            // Skip null or undefined values except for prompt
             continue;
+          } else if (key === 'prompt' && (value === null || value === undefined)) {
+            // For prompt field, convert null/undefined to empty string
+            yaml += `${indentStr}${key}: ''\n`;
           } else if (typeof value === 'object') {
             yaml += `${indentStr}${key}:\n${this.convertToYaml(value, indent + 2)}`;
           } else if (typeof value === 'string' && value.includes('\n')) {

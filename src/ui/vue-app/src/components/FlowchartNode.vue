@@ -40,24 +40,22 @@
       
       <div v-if="node.type === 'act'" class="prompt-container">
         <label :for="`${node.id}-prompt`">Command:</label>
-        <textarea 
-          :id="`${node.id}-prompt`" 
-          class="node-prompt" 
+        <textarea
+          :id="`${node.id}-prompt`"
+          class="node-prompt"
           placeholder="Enter command here..."
-          @input="updateNodePrompt($event)"
+          v-model="nodePrompt"
           @mousedown.stop
-          v-text="node.prompt"
         ></textarea>
       </div>
       <div v-if="node.type === 'choice'" class="prompt-container">
         <label :for="`${node.id}-prompt`">Question:</label>
-        <textarea 
-          :id="`${node.id}-prompt`" 
-          class="node-prompt" 
+        <textarea
+          :id="`${node.id}-prompt`"
+          class="node-prompt"
           placeholder="Enter question here..."
-          @input="updateNodePrompt($event)"
+          v-model="nodePrompt"
           @mousedown.stop
-          v-text="node.prompt"
         ></textarea>
         <div class="choice-exits">
           <div class="exit-yes-container">
@@ -138,11 +136,26 @@ export default {
     }
   },
   emits: [
-    'delete-node', 
-    'update-node', 
-    'node-drag-start', 
+    'delete-node',
+    'update-node',
+    'node-drag-start',
     'connection-start'
   ],
+  computed: {
+    nodePrompt: {
+      get() {
+        return this.node.prompt || '';
+      },
+      set(value) {
+        console.log('nodePrompt setter called with value:', value);
+        // Directly update the parent component with the correct parameters
+        this.$emit('update-node', this.node.id, { prompt: value });
+        
+        // Log the actual parameters being sent
+        console.log('Emitting update-node with nodeId:', this.node.id, 'updates:', { prompt: value });
+      }
+    }
+  },
   methods: {
     getNodeTitle(type) {
       switch (type) {
@@ -164,9 +177,6 @@ export default {
     },
     updateNodeContent(e) {
       this.$emit('update-node', this.node.id, { content: e.target.textContent });
-    },
-    updateNodePrompt(e) {
-      this.$emit('update-node', this.node.id, { prompt: e.target.value });
     },
     updateNodeActionType(e) {
       // Update the node content based on the selected action type
