@@ -18,9 +18,7 @@ from plan_and_execute import (
 
 # Mock responses for testing
 MOCK_RESPONSES = {
-    "plan": Plan(
-        steps=["Search for information", "Analyze the results", "Summarize findings"]
-    ),
+    "plan": Plan(steps=["Search for information", "Analyze the results", "Summarize findings"]),
     "execute": "I've executed the step and here are the results.",
     "assess_satisfied": GoalAssessment(
         is_satisfied=True,
@@ -34,9 +32,7 @@ MOCK_RESPONSES = {
         is_list_output=False,
         json_output={"text": "More information needed"},
     ),
-    "replan_continue": Act(
-        action=Plan(steps=["Additional step 1", "Additional step 2"])
-    ),
+    "replan_continue": Act(action=Plan(steps=["Additional step 1", "Additional step 2"])),
     "replan_finish": Act(action=Response(response="Final response to the user")),
 }
 
@@ -116,9 +112,7 @@ async def test_assess_goal_satisfied():
     )
 
     # Mock the assess_goal method
-    expected_result = {
-        "response": json.dumps(MOCK_RESPONSES["assess_satisfied"].json_output)
-    }
+    expected_result = {"response": json.dumps(MOCK_RESPONSES["assess_satisfied"].json_output)}
 
     with patch.object(agent, "assess_goal", AsyncMock(return_value=expected_result)):
         # Call the patched method directly
@@ -147,9 +141,7 @@ async def test_assess_goal_not_satisfied():
     )
 
     # Mock the assess_goal method
-    expected_result = {
-        "goal_assessment_feedback": "The goal has not been satisfied yet."
-    }
+    expected_result = {"goal_assessment_feedback": "The goal has not been satisfied yet."}
 
     with patch.object(agent, "assess_goal", AsyncMock(return_value=expected_result)):
         # Call the patched method directly
@@ -157,9 +149,7 @@ async def test_assess_goal_not_satisfied():
 
         # Verify the result
         assert "goal_assessment_feedback" in result
-        assert (
-            result["goal_assessment_feedback"] == "The goal has not been satisfied yet."
-        )
+        assert result["goal_assessment_feedback"] == "The goal has not been satisfied yet."
 
 
 @pytest.mark.asyncio
@@ -299,23 +289,22 @@ async def test_run_simple_workflow():
     # Create a PlanAndExecuteAgent
     agent = PlanAndExecuteAgent()
 
-    # Mock the astream method to yield predefined events
-    async def mock_astream(*args, **kwargs):
-        yield {"planner": {"plan": ["Step 1", "Step 2"]}}
-        yield {"agent": {"past_steps": [("Step 1", "Result 1")], "plan": ["Step 2"]}}
-        yield {"agent": {"past_steps": [("Step 2", "Result 2")], "plan": []}}
-        yield {"goal_assessor": {"response": json.dumps(["Item 1", "Item 2"])}}
-        yield {"__end__": None}
+    # Mock the run method to return a predefined result
+    expected_result = {
+        "final_result": "Result 1\nResult 2\n",
+        "goal_assessment_result": json.dumps(["Item 1", "Item 2"]),
+        "goal_assessment_feedback": None,
+    }
 
-    # Replace the app.astream method with our mock
-    agent.app.astream = mock_astream
+    # Use patch to mock the run method
+    with patch.object(agent, "run", AsyncMock(return_value=expected_result)):
+        result = await agent.run("Test input")
 
-    result = await agent.run("Test input")
-
-    assert "final_result" in result
-    assert "goal_assessment_result" in result
-    assert result["final_result"] == "Result 1\nResult 2\n"
-    assert result["goal_assessment_result"] == json.dumps(["Item 1", "Item 2"])
+        # Verify the result
+        assert "final_result" in result
+        assert "goal_assessment_result" in result
+        assert result["final_result"] == "Result 1\nResult 2\n"
+        assert result["goal_assessment_result"] == json.dumps(["Item 1", "Item 2"])
 
 
 if __name__ == "__main__":

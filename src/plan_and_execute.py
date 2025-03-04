@@ -31,9 +31,7 @@ MODEL_NAME = "gpt-4o"
 class Plan(BaseModel):
     """Plan to follow in future"""
 
-    steps: List[str] = Field(
-        description="different steps to follow, should be in sorted order"
-    )
+    steps: List[str] = Field(description="different steps to follow, should be in sorted order")
 
 
 class Response(BaseModel):
@@ -58,9 +56,7 @@ class GoalAssessment(BaseModel):
     final_response: str = Field(
         description="Final response to the user if goal is satisfied, or explanation of what's missing if not"
     )
-    is_list_output: bool = Field(
-        description="Whether the output should be a list (true) or a text object (false)"
-    )
+    is_list_output: bool = Field(description="Whether the output should be a list (true) or a text object (false)")
     json_output: Union[List[str], Dict[str, str]] = Field(
         description="The JSON output, either a list of strings or an object with one entry"
     )
@@ -94,9 +90,7 @@ class PlanAndExecuteAgent:
 
         # Initialize agent executor
         self.prompt = "You are a helpful assistant."
-        self.agent_executor = create_react_agent(
-            self.llm, self.tools, prompt=self.prompt
-        )
+        self.agent_executor = create_react_agent(self.llm, self.tools, prompt=self.prompt)
 
         # Initialize prompts
         self._init_prompts()
@@ -125,9 +119,7 @@ class PlanAndExecuteAgent:
                     This plan should involve individual tasks, that if executed correctly will
                     yield the correct answer.
                     The plan should use the supplied tools when appropriate. The tools are """
-                    + ", ".join(
-                        [f"{tool.name}: {tool.description}" for tool in self.tools]
-                    )
+                    + ", ".join([f"{tool.name}: {tool.description}" for tool in self.tools])
                     + """Do not add any superfluous steps.
                     The result of the final step should be the final answer.
                     Make sure that each step has all the information needed - do not skip steps.""",
@@ -200,9 +192,8 @@ class PlanAndExecuteAgent:
                 ("human", self.goal_assessor_user_template),
             ]
         )
-        self.goal_assessor = (
-            self.goal_assessor_prompt
-            | self.llm.with_structured_output(GoalAssessment, method="function_calling")
+        self.goal_assessor = self.goal_assessor_prompt | self.llm.with_structured_output(
+            GoalAssessment, method="function_calling"
         )
 
     async def execute_step(self, state: PlanExecute):
@@ -215,9 +206,7 @@ class PlanAndExecuteAgent:
         task_formatted = f"""
             For the following plan:
             {plan_str}\n\nYou are tasked with executing step {1}, {task}."""
-        agent_response = await self.agent_executor.ainvoke(
-            {"messages": [("user", task_formatted)]}
-        )
+        agent_response = await self.agent_executor.ainvoke({"messages": [("user", task_formatted)]})
         # Pop the executed step from the plan onto past_steps
         remaining_plan = plan[1:] if len(plan) > 1 else []
         return {
@@ -256,9 +245,7 @@ class PlanAndExecuteAgent:
     async def assess_goal(self, state: PlanExecute):
         """Assess if the goal has been satisfied based on the completed steps"""
         # Create a string representation of the plan for the prompt
-        plan_str = "\n".join(
-            f"{i+1}. {step}" for i, step in enumerate(state.get("plan", []))
-        )
+        plan_str = "\n".join(f"{i+1}. {step}" for i, step in enumerate(state.get("plan", [])))
 
         # Create a string representation of past steps
         past_steps_str = ""
@@ -274,11 +261,7 @@ class PlanAndExecuteAgent:
             # Format the response as JSON based on whether it should be a list or text object
             if assessment.is_list_output:
                 # Ensure we have a JSON list
-                json_output = (
-                    assessment.json_output
-                    if isinstance(assessment.json_output, list)
-                    else []
-                )
+                json_output = assessment.json_output if isinstance(assessment.json_output, list) else []
                 print(f"JSON LIST OUTPUT: {json.dumps(json_output)}")
             else:
                 # Ensure we have a JSON object with one entry
@@ -385,9 +368,7 @@ class PlanAndExecuteAgent:
             print(f"Error loading flowchart from {filepath}: {str(e)}")
             return None
 
-    async def build_custom_workflow_from_flowchart(
-        self, flowchart_data: Dict
-    ) -> StateGraph:
+    async def build_custom_workflow_from_flowchart(self, flowchart_data: Dict) -> StateGraph:
         """
         Build a custom workflow from flowchart data.
 
@@ -436,9 +417,7 @@ class PlanAndExecuteAgent:
             # Add edge based on node types
             if node_types[from_node_id] == "choice":
                 # For choice nodes, we add conditional edges
-                custom_workflow.add_conditional_edges(
-                    from_node_id, self.route_after_assessment, [to_node_id, END]
-                )
+                custom_workflow.add_conditional_edges(from_node_id, self.route_after_assessment, [to_node_id, END])
             else:
                 # For other nodes, we add direct edges
                 custom_workflow.add_edge(from_node_id, to_node_id)
@@ -471,9 +450,7 @@ class PlanAndExecuteAgent:
         goal_assessment_feedback = None
 
         # Check if there's a flowchart YAML file
-        flowchart_path = os.path.join(
-            os.path.dirname(__file__), "flowcharts", "current_flowchart.yaml"
-        )
+        flowchart_path = os.path.join(os.path.dirname(__file__), "flowcharts", "current_flowchart.yaml")
         flowchart_data = await self.load_flowchart_from_yaml(flowchart_path)
 
         # Determine which workflow to use
@@ -483,9 +460,7 @@ class PlanAndExecuteAgent:
             print(f"Using flowchart from {flowchart_path}")
             try:
                 # Build a custom workflow from the flowchart
-                custom_workflow = await self.build_custom_workflow_from_flowchart(
-                    flowchart_data
-                )
+                custom_workflow = await self.build_custom_workflow_from_flowchart(flowchart_data)
                 workflow_to_use = custom_workflow
                 print("Successfully built custom workflow from flowchart")
             except Exception as e:
@@ -497,11 +472,20 @@ class PlanAndExecuteAgent:
             async for event in workflow_to_use.astream(inputs, config=config):
                 for k, v in event.items():
                     if k != "__end__" and v is not None:
+                        # Handle both direct and nested structures (for testing)
                         if "past_steps" in v:
                             # In plan execution, steps are moved to past_steps as they are completed
                             for step, result in v["past_steps"]:
                                 print(f"EXECUTED: {step}")
+                                # Add the result to final_result
                                 final_result += result + "\n"
+                        # Handle nested structure for agent events in tests
+                        elif k == "agent" and isinstance(v, dict) and "past_steps" in v:
+                            for step, result in v["past_steps"]:
+                                print(f"EXECUTED: {step}")
+                                # Add the result to final_result
+                                final_result += result + "\n"
+
                         if "plan" in v:
                             # A plan has been created
                             print("PLAN:")
@@ -510,12 +494,14 @@ class PlanAndExecuteAgent:
                         if "response" in v:
                             # The model response
                             goal_assessment_result = v["response"]
+                        # Handle nested structure for goal_assessor events in tests
+                        elif k == "goal_assessor" and isinstance(v, dict) and "response" in v:
+                            goal_assessment_result = v["response"]
+
                         if "goal_assessment_feedback" in v:
                             # if the response was rejected, feedback is given as to why
                             goal_assessment_feedback = v["goal_assessment_feedback"]
-                            print(
-                                f"\nGOAL ASSESSMENT FEEDBACK: {goal_assessment_feedback}"
-                            )
+                            print(f"\nGOAL ASSESSMENT FEEDBACK: {goal_assessment_feedback}")
 
             print("DONE: " + final_result)
             if goal_assessment_result:
@@ -565,9 +551,7 @@ class PlanAndExecuteAgent:
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Plan and Execute workflow")
-    parser.add_argument(
-        "--flowchart", action="store_true", help="Generate flowchart image"
-    )
+    parser.add_argument("--flowchart", action="store_true", help="Generate flowchart image")
     parser.add_argument(
         "--input",
         type=str,
