@@ -1,61 +1,13 @@
-connections:
-- from:
-    nodeId: node-2
-    position: false
-  to:
-    nodeId: node-3
-    position: top
-- from:
-    nodeId: node-1
-    position: bottom
-  to:
-    nodeId: node-2
-    position: top
-- from:
-    nodeId: node-2
-    position: true
-  to:
-    nodeId: node-4
-    position: top
-- from:
-    nodeId: node-4
-    position: bottom
-  to:
-    nodeId: node-5
-    position: top
 metadata:
-  name: Sample Workflow
+  name: Queen
 nodes:
-- content: Start workflow 1
-  id: node-1
-  position:
-    x: 120
-    y: 120
-  prompt: This is the first action in workflow 1
-  type: act
-- content: Is condition met?
-  id: node-2
-  position:
-    x: 369
-    y: 320
-  prompt: Check if the condition is met
-  type: choice
-- content: End workflow (No)
-  id: node-3
-  position:
-    x: 576
-    y: 588
-  type: terminal
-- content: Perform action
-  id: node-4
-  position:
-    x: 211
-    y: 638
-  prompt: Perform the required action
-  type: act
-- content: End workflow (Yes)
-  id: node-5
-  position:
-    x: 297
-    y: 830
-  type: terminal
+  - 
+    id: node-1
+    type: act
+    position:
+      x: 120
+      y: 120
+    content: 
+    prompt: Who's the Queen?
+
+connections:

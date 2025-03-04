@@ -147,12 +147,8 @@ export default {
         return this.node.prompt || '';
       },
       set(value) {
-        console.log('nodePrompt setter called with value:', value);
         // Directly update the parent component with the correct parameters
         this.$emit('update-node', this.node.id, { prompt: value });
-        
-        // Log the actual parameters being sent
-        console.log('Emitting update-node with nodeId:', this.node.id, 'updates:', { prompt: value });
       }
     }
   },

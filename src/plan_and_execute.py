@@ -347,88 +347,7 @@ class PlanAndExecuteAgent:
         # Compile it into a LangChain Runnable
         return workflow.compile()
 
-    async def load_flowchart_from_yaml(self, filepath: str) -> Optional[Dict]:
-        """
-        Load a flowchart from a YAML file.
-
-        Args:
-            filepath: Path to the YAML file.
-
-        Returns:
-            Dictionary containing the flowchart data if the file exists, None otherwise.
-        """
-        if not os.path.exists(filepath):
-            return None
-
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                flowchart_data = yaml.safe_load(f)
-            return flowchart_data
-        except Exception as e:
-            print(f"Error loading flowchart from {filepath}: {str(e)}")
-            return None
-
-    async def build_custom_workflow_from_flowchart(self, flowchart_data: Dict) -> StateGraph:
-        """
-        Build a custom workflow from flowchart data.
-
-        Args:
-            flowchart_data: Dictionary containing the flowchart data.
-
-        Returns:
-            A StateGraph object representing the custom workflow.
-        """
-        # Create a new StateGraph
-        custom_workflow = StateGraph(PlanExecute)
-
-        # Map of node IDs to their types
-        node_types = {}
-
-        # Add nodes from the flowchart
-        for node in flowchart_data.get("nodes", []):
-            node_id = node.get("id")
-            node_type = node.get("type")
-            node_content = node.get("content", "")
-
-            # Store node type for later use
-            node_types[node_id] = node_type
-
-            # Add the node to the graph based on its type
-            if node_type == "act":
-                # Action nodes execute a command
-                custom_workflow.add_node(node_id, self.execute_step)
-            elif node_type == "choice":
-                # Choice nodes make a decision
-                custom_workflow.add_node(node_id, self.assess_goal)
-            elif node_type == "terminal":
-                # Terminal nodes end the workflow
-                # We don't add these as nodes, but use them as endpoints
-                pass
-
-        # Add connections from the flowchart
-        for connection in flowchart_data.get("connections", []):
-            from_node_id = connection.get("from", {}).get("nodeId")
-            to_node_id = connection.get("to", {}).get("nodeId")
-
-            # Skip if either node doesn't exist
-            if from_node_id not in node_types or to_node_id not in node_types:
-                continue
-
-            # Add edge based on node types
-            if node_types[from_node_id] == "choice":
-                # For choice nodes, we add conditional edges
-                custom_workflow.add_conditional_edges(from_node_id, self.route_after_assessment, [to_node_id, END])
-            else:
-                # For other nodes, we add direct edges
-                custom_workflow.add_edge(from_node_id, to_node_id)
-
-        # Add the START edge to the first node (assuming the first node in the list is the start)
-        if flowchart_data.get("nodes"):
-            first_node_id = flowchart_data["nodes"][0]["id"]
-            custom_workflow.add_edge(START, first_node_id)
-
-        # Compile the workflow
-        return custom_workflow.compile()
+    # Removed flowchart-related functions as PlanAndExecuteAgent shouldn't know about flowcharts
 
     async def run(self, input_text: str, config: Dict = None):
         """
@@ -449,27 +368,9 @@ class PlanAndExecuteAgent:
         goal_assessment_result = None
         goal_assessment_feedback = None
 
-        # Check if there's a flowchart YAML file
-        flowchart_path = os.path.join(os.path.dirname(__file__), "flowcharts", "current_flowchart.yaml")
-        flowchart_data = await self.load_flowchart_from_yaml(flowchart_path)
-
-        # Determine which workflow to use
-        workflow_to_use = self.app  # Default workflow
-
-        if flowchart_data:
-            print(f"Using flowchart from {flowchart_path}")
-            try:
-                # Build a custom workflow from the flowchart
-                custom_workflow = await self.build_custom_workflow_from_flowchart(flowchart_data)
-                workflow_to_use = custom_workflow
-                print("Successfully built custom workflow from flowchart")
-            except Exception as e:
-                print(f"Error building custom workflow: {str(e)}")
-                print("Falling back to default workflow")
-
         try:
-            # Run the workflow
-            async for event in workflow_to_use.astream(inputs, config=config):
+            # Run the workflow using the default app
+            async for event in self.app.astream(inputs, config=config):
                 for k, v in event.items():
                     if k != "__end__" and v is not None:
                         # Handle both direct and nested structures (for testing)

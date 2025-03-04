@@ -77,7 +77,8 @@ class PromptInput(BaseModel):
 class ApiResponse(BaseModel):
     """Response model for the execute endpoint."""
 
-    goal_assessment_result: Any
+    result: str = Field(description="The result of the execution")
+    error: Optional[str] = Field(default=None, description="Error message if execution failed")
 
 
 class WorkflowExecuteRequest(BaseModel):
@@ -93,15 +94,11 @@ class WorkflowExecuteResponse(BaseModel):
     """Response model for the workflow execution endpoint."""
 
     final_result: str = Field(description="The final result of the workflow execution")
-    goal_assessment_result: Optional[str] = Field(default=None, description="The goal assessment result if available")
-    goal_assessment_feedback: Optional[str] = Field(
-        default=None, description="Feedback on the goal assessment if available"
-    )
     error: Optional[str] = Field(default=None, description="Error message if execution failed")
 
 
 @api.post("/execute", response_model=ApiResponse)
-async def execute_prompt(prompt_input: PromptInput) -> Dict[str, Any]:  # pylint: disable=unused-argument
+async def execute_prompt(prompt_input: PromptInput) -> Dict[str, Any]:
     """
     Execute a prompt using the plan_and_execute workflow.
 
@@ -109,17 +106,24 @@ async def execute_prompt(prompt_input: PromptInput) -> Dict[str, Any]:  # pylint
         prompt_input: The input prompt.
 
     Returns:
-        A dictionary containing the goal_assessment_result.
+        A dictionary containing the execution result.
     """
     try:
-        # For now, return a placeholder response
-        goal_assessment_result = json.dumps({"message": "Execution endpoint is currently disabled"})
-        return {"goal_assessment_result": json.loads(goal_assessment_result)}
+        # Create a plan_and_execute agent
+        agent = PlanAndExecuteAgent()
+
+        # Execute the agent with the input
+        result = await agent.run(prompt_input.input)
+
+        # Extract the final result
+        final_result = result.get("final_result", "No result")
+
+        return {"result": final_result}
     except Exception as e:
         # Handle all other exceptions
         error_message = f"An error occurred: {str(e)}"
         print(f"\n\n{error_message}")
-        raise HTTPException(status_code=500, detail=error_message) from e
+        return {"result": "", "error": error_message}
 
 
 class FlowchartResponse(BaseModel):
@@ -192,6 +196,194 @@ async def upload_flowchart(file: UploadFile = File(...)) -> Dict[str, Any]:
             status_code=500,
             content={"success": False, "message": f"An error occurred: {str(e)}"},
         )
+
+
+@api.get("/flowchart/current", response_model=Dict[str, Any])
+async def get_current_flowchart() -> Dict[str, Any]:
+    """
+    Get the current flowchart from the flowcharts directory.
+
+    Returns:
+        The current flowchart data.
+    """
+    try:
+        # Get the flowchart file path
+        flowchart_path = os.path.join(os.path.dirname(__file__), "flowcharts", "current_flowchart.yaml")
+
+        # Check if the file exists
+        if not os.path.exists(flowchart_path):
+            raise HTTPException(status_code=404, detail="Current flowchart not found")
+
+        # Read and parse the flowchart file
+        with open(flowchart_path, "r", encoding="utf-8") as f:
+            flowchart_data = yaml.safe_load(f)
+
+        return flowchart_data
+
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # Handle all other exceptions
+        raise HTTPException(status_code=500, detail=f"An error occurred while reading flowchart: {str(e)}") from e
+
+
+@api.post("/flowchart/current/execute", response_model=WorkflowExecuteResponse)
+async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str, Any]:
+    """
+    Execute the current flowchart.
+
+    Args:
+        request: The execution request containing input and optional configuration.
+
+    Returns:
+        The results of the flowchart execution.
+    """
+    try:
+        # Get the flowchart file path
+        flowchart_path = os.path.join(os.path.dirname(__file__), "flowcharts", "current_flowchart.yaml")
+
+        # Check if the file exists
+        if not os.path.exists(flowchart_path):
+            raise HTTPException(status_code=404, detail="Current flowchart not found")
+
+        # Load the flowchart file
+        with open(flowchart_path, "r", encoding="utf-8") as f:
+            flowchart_data = yaml.safe_load(f)
+
+        # Initialize variables to store results
+        final_result = ""
+        error = None
+
+        try:
+            # Get the nodes and connections from the flowchart
+            nodes = flowchart_data.get("nodes", [])
+            connections = flowchart_data.get("connections", [])
+
+            if not nodes:
+                raise ValueError("Flowchart has no nodes")
+
+            # Find start node (node with type 'start') or use the first node
+            current_node = None
+            for node in nodes:
+                if node.get("type") == "start":
+                    current_node = node
+                    break
+
+            # If no start node found, use the first node
+            if not current_node:
+                current_node = nodes[0]
+
+            # Create a map of node IDs to nodes for easy lookup
+            node_map = {node["id"]: node for node in nodes}
+
+            # Create a map of connections for easy lookup
+            connection_map = {}
+            if connections:
+                for conn in connections:
+                    from_id = conn.get("from", {}).get("nodeId")
+                    from_pos = conn.get("from", {}).get("position")
+                    to_id = conn.get("to", {}).get("nodeId")
+
+                    if from_id not in connection_map:
+                        connection_map[from_id] = {}
+
+                    connection_map[from_id][from_pos] = to_id
+
+            # Process nodes until we reach a terminal node or have no more connections
+            while current_node:
+                node_id = current_node["id"]
+                node_type = current_node.get("type")
+                node_prompt = current_node.get("prompt", "")
+                node_content = current_node.get("content", "")
+
+                print(f"Processing node: {node_id}, type: {node_type}")
+
+                if node_type == "act":
+                    # For action nodes, use plan_and_execute to run just this node
+                    agent = PlanAndExecuteAgent()
+
+                    # Combine the node prompt with the user input
+                    combined_input = f"{node_prompt}\n\nUser input: {request.input}"
+
+                    # Execute the agent with just this single action node
+                    result = await agent.run(combined_input, request.config)
+
+                    # Add the result to the final result
+                    if result.get("final_result"):
+                        node_result = result["final_result"]
+                        final_result += f"Node {node_id} ({node_content}): {node_result}\n"
+                        print(f"Node {node_id} result: {node_result}")
+
+                elif node_type == "choice":
+                    # For choice nodes, make a simple LLM call to determine which path to take
+                    from langchain_openai import ChatOpenAI
+
+                    # Create a simple LLM
+                    llm = ChatOpenAI(model="gpt-4o")
+
+                    # Combine the node prompt with the user input
+                    combined_input = f"{node_prompt}\n\nUser input: {request.input}\n\nBased on the above, respond with 'true' or 'false'."
+
+                    # Make the LLM call
+                    response = await llm.ainvoke(combined_input)
+                    choice_result = response.content.strip().lower()
+
+                    # Add the choice result to the final result
+                    final_result += f"Node {node_id} ({node_content}): Decision is {choice_result}\n"
+                    print(f"Node {node_id} choice: {choice_result}")
+
+                elif node_type == "terminal":
+                    # Terminal node, add its content to the result and end the workflow
+                    final_result += f"Node {node_id} ({node_content}): Workflow completed\n"
+                    print(f"Terminal node {node_id} reached")
+                    break
+
+                # Determine the next node to process
+                next_node_id = None
+                if node_id in connection_map:
+                    if node_type == "choice":
+                        # For choice nodes, follow the true/false path
+                        if "true" in choice_result and "true" in connection_map[node_id]:
+                            next_node_id = connection_map[node_id]["true"]
+                        elif "false" in choice_result and "false" in connection_map[node_id]:
+                            next_node_id = connection_map[node_id]["false"]
+                        else:
+                            # If no matching position, try to use any available connection
+                            for pos, to_id in connection_map[node_id].items():
+                                next_node_id = to_id
+                                break
+                    else:
+                        # For other nodes, follow the first connection
+                        for pos, to_id in connection_map[node_id].items():
+                            next_node_id = to_id
+                            break
+
+                # Move to the next node if it exists
+                if next_node_id and next_node_id in node_map:
+                    current_node = node_map[next_node_id]
+                    print(f"Moving to next node: {next_node_id}")
+                else:
+                    print(f"No next node found, ending workflow")
+                    current_node = None
+
+        except Exception as e:
+            error = f"Error during flowchart execution: {str(e)}"
+            print(f"\n\n{error}")
+
+        return {
+            "final_result": final_result,
+            "error": error,
+        }
+
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # Handle all other exceptions
+        error_message = f"An error occurred while executing flowchart: {str(e)}"
+        print(f"\n\n{error_message}")
+        raise HTTPException(status_code=500, detail=error_message) from e
 
 
 @api.get("/workflows", response_model=List[Dict[str, Any]])
@@ -296,31 +488,133 @@ async def execute_workflow(filename: str, request: WorkflowExecuteRequest) -> Di
         if not os.path.exists(workflow_path):
             raise HTTPException(status_code=404, detail=f"Workflow file '{filename}' not found")
 
-        # Create a temporary flowchart file for the agent to use
-        flowchart_dir = os.path.join(os.path.dirname(__file__), "flowcharts")
-        os.makedirs(flowchart_dir, exist_ok=True)
-        flowchart_path = os.path.join(flowchart_dir, "current_flowchart.yaml")
-
-        # Read the workflow file
+        # Load the workflow file
         with open(workflow_path, "r", encoding="utf-8") as f:
             workflow_data = yaml.safe_load(f)
 
-        # Write to the current_flowchart.yaml file
-        with open(flowchart_path, "w", encoding="utf-8") as f:
-            yaml.dump(workflow_data, f)
+        # Initialize variables to store results
+        final_result = ""
+        error = None
 
-        # Create the agent
-        agent = PlanAndExecuteAgent()
+        try:
+            # Get the nodes and connections from the workflow
+            nodes = workflow_data.get("nodes", [])
+            connections = workflow_data.get("connections", [])
 
-        # Execute the workflow
-        print(f"Received request.input: {request.input}")
-        result = await agent.run(request.input, request.config)
+            if not nodes:
+                raise ValueError("Workflow has no nodes")
+
+            # Find start node (node with type 'start') or use the first node
+            current_node = None
+            for node in nodes:
+                if node.get("type") == "start":
+                    current_node = node
+                    break
+
+            # If no start node found, use the first node
+            if not current_node:
+                current_node = nodes[0]
+
+            # Create a map of node IDs to nodes for easy lookup
+            node_map = {node["id"]: node for node in nodes}
+
+            # Create a map of connections for easy lookup
+            connection_map = {}
+            if connections:
+                for conn in connections:
+                    from_id = conn.get("from", {}).get("nodeId")
+                    from_pos = conn.get("from", {}).get("position")
+                    to_id = conn.get("to", {}).get("nodeId")
+
+                    if from_id not in connection_map:
+                        connection_map[from_id] = {}
+
+                    connection_map[from_id][from_pos] = to_id
+
+            # Process nodes until we reach a terminal node or have no more connections
+            while current_node:
+                node_id = current_node["id"]
+                node_type = current_node.get("type")
+                node_prompt = current_node.get("prompt", "")
+                node_content = current_node.get("content", "")
+
+                print(f"Processing node: {node_id}, type: {node_type}")
+
+                if node_type == "act":
+                    # For action nodes, use plan_and_execute to run just this node
+                    agent = PlanAndExecuteAgent()
+
+                    # Combine the node prompt with the user input
+                    combined_input = f"{node_prompt}\n\nUser input: {request.input}"
+
+                    # Execute the agent with just this single action node
+                    result = await agent.run(combined_input, request.config)
+
+                    # Add the result to the final result
+                    if result.get("final_result"):
+                        node_result = result["final_result"]
+                        final_result += f"Node {node_id} ({node_content}): {node_result}\n"
+                        print(f"Node {node_id} result: {node_result}")
+
+                elif node_type == "choice":
+                    # For choice nodes, make a simple LLM call to determine which path to take
+                    from langchain_openai import ChatOpenAI
+
+                    # Create a simple LLM
+                    llm = ChatOpenAI(model="gpt-4o")
+
+                    # Combine the node prompt with the user input
+                    combined_input = f"{node_prompt}\n\nUser input: {request.input}\n\nBased on the above, respond with 'true' or 'false'."
+
+                    # Make the LLM call
+                    response = await llm.ainvoke(combined_input)
+                    choice_result = response.content.strip().lower()
+
+                    # Add the choice result to the final result
+                    final_result += f"Node {node_id} ({node_content}): Decision is {choice_result}\n"
+                    print(f"Node {node_id} choice: {choice_result}")
+
+                elif node_type == "terminal":
+                    # Terminal node, add its content to the result and end the workflow
+                    final_result += f"Node {node_id} ({node_content}): Workflow completed\n"
+                    print(f"Terminal node {node_id} reached")
+                    break
+
+                # Determine the next node to process
+                next_node_id = None
+                if node_id in connection_map:
+                    if node_type == "choice":
+                        # For choice nodes, follow the true/false path
+                        if "true" in choice_result and "true" in connection_map[node_id]:
+                            next_node_id = connection_map[node_id]["true"]
+                        elif "false" in choice_result and "false" in connection_map[node_id]:
+                            next_node_id = connection_map[node_id]["false"]
+                        else:
+                            # If no matching position, try to use any available connection
+                            for pos, to_id in connection_map[node_id].items():
+                                next_node_id = to_id
+                                break
+                    else:
+                        # For other nodes, follow the first connection
+                        for pos, to_id in connection_map[node_id].items():
+                            next_node_id = to_id
+                            break
+
+                # Move to the next node if it exists
+                if next_node_id and next_node_id in node_map:
+                    current_node = node_map[next_node_id]
+                    print(f"Moving to next node: {next_node_id}")
+                else:
+                    print(f"No next node found, ending workflow")
+                    current_node = None
+
+        except Exception as e:
+            error = f"Error during workflow execution: {str(e)}"
+            print(f"\n\n{error}")
 
         return {
-            "final_result": result.get("final_result", ""),
-            "goal_assessment_result": result.get("goal_assessment_result"),
-            "goal_assessment_feedback": result.get("goal_assessment_feedback"),
-            "error": result.get("error"),
+            "final_result": final_result,
+            "error": error,
         }
 
     except HTTPException:

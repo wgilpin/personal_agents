@@ -70,38 +70,64 @@ export default {
       this.workflowStatusMessage = 'Workflow running...'
       this.workflowStatusIsError = false
 
-      // Get the current workflow filename from the first workflow in the list
-      // In a real application, you would want to get the currently selected workflow
-      axios.get('http://localhost:8000/workflows')
+      // First try to get the current flowchart from src/flowcharts/
+      axios.get('http://localhost:8000/flowchart/current')
         .then(response => {
-          if (response.data && response.data.length > 0) {
-            const filename = response.data[0].filename
+          // If we successfully got the current flowchart, use it
+          const flowchartData = response.data;
+          
+          // Find the first action node (type 'act') to get its prompt
+          let nodePrompt = "Execute workflow" // Default fallback
+          
+          if (flowchartData.nodes && Array.isArray(flowchartData.nodes)) {
+            // Find the first node in the workflow (usually the start node)
+            const firstNode = flowchartData.nodes.find(node => node.type === 'act')
             
-            // First get the workflow data to extract the first node's prompt
-            return axios.get(`http://localhost:8000/workflows/${filename}`)
-              .then(workflowResponse => {
-                const workflowData = workflowResponse.data
-                
-                // Find the first action node (type 'act') to get its prompt
-                let nodePrompt = "Execute workflow" // Default fallback
-                
-                if (workflowData.nodes && Array.isArray(workflowData.nodes)) {
-                  // Find the first node in the workflow (usually the start node)
-                  const firstNode = workflowData.nodes.find(node => node.type === 'act')
-                  
-                  if (firstNode && firstNode.prompt) {
-                    nodePrompt = firstNode.prompt
-                  }
-                }
-                
-                // Now execute the workflow with the node's prompt as input
-                return axios.post(`http://localhost:8000/workflows/${filename}/execute`, {
-                  input: nodePrompt
-                })
-              })
-          } else {
-            throw new Error('No workflows available')
+            if (firstNode && firstNode.prompt) {
+              nodePrompt = firstNode.prompt
+            }
           }
+          
+          // Execute the current flowchart
+          return axios.post('http://localhost:8000/flowchart/current/execute', {
+            input: nodePrompt
+          })
+        })
+        .catch(error => {
+          console.error('Error getting current flowchart:', error);
+          
+          // Fallback to using the first workflow from the workflows directory
+          return axios.get('http://localhost:8000/workflows')
+            .then(response => {
+              if (response.data && response.data.length > 0) {
+                const filename = response.data[0].filename
+                
+                // First get the workflow data to extract the first node's prompt
+                return axios.get(`http://localhost:8000/workflows/${filename}`)
+                  .then(workflowResponse => {
+                    const workflowData = workflowResponse.data
+                    
+                    // Find the first action node (type 'act') to get its prompt
+                    let nodePrompt = "Execute workflow" // Default fallback
+                    
+                    if (workflowData.nodes && Array.isArray(workflowData.nodes)) {
+                      // Find the first node in the workflow (usually the start node)
+                      const firstNode = workflowData.nodes.find(node => node.type === 'act')
+                      
+                      if (firstNode && firstNode.prompt) {
+                        nodePrompt = firstNode.prompt
+                      }
+                    }
+                    
+                    // Now execute the workflow with the node's prompt as input
+                    return axios.post(`http://localhost:8000/workflows/${filename}/execute`, {
+                      input: nodePrompt
+                    })
+                  })
+              } else {
+                throw new Error('No workflows available')
+              }
+            })
         })
         .then(response => {
           this.workflowStatusMessage = 'Workflow completed successfully!\n' + JSON.stringify(response.data, null, 2)
@@ -144,7 +170,6 @@ export default {
       const nodeIndex = this.nodes.findIndex(n => n.id === nodeId);
       if (nodeIndex !== -1) {
         this.nodes[nodeIndex] = { ...this.nodes[nodeIndex], ...updates };
-        console.log('Node updated:', JSON.stringify(this.nodes[nodeIndex]));
         
         // If position was updated, update last node position
         if (updates.x !== undefined && updates.y !== undefined) {
@@ -256,9 +281,7 @@ export default {
           
           // Add prompt for action and choice nodes
           if (node.type === 'act' || node.type === 'choice') {
-            console.log(`Node ${node.id} prompt before cleaning:`, node.prompt);
             cleanNode.prompt = node.prompt || '';
-            console.log(`Node ${node.id} prompt after cleaning:`, cleanNode.prompt);
           }
           
           return cleanNode;
