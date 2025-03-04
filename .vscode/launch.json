@@ -11,6 +11,13 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug api_server.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "src/api_server.py",
+            "console": "integratedTerminal"
         }
     ]
 }
