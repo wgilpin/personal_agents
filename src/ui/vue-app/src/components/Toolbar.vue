@@ -14,9 +14,9 @@
       </button>
     </div>
     <div class="toolbar-actions">
-      <button id="load-workflow" @click="$emit('load-workflow-click')">Load Workflow</button>
-      <button id="new-flowchart" @click="$emit('new-flowchart')">New Flowchart</button>
-      <button id="publish-flowchart" @click="$emit('publish-flowchart')">Publish</button>
+      <button id="load-workflow" @click="$emit('load-workflow-click')" title="Load Workflow"><i class="material-icons">file_open</i></button>
+      <button id="new-flowchart" @click="$emit('new-flowchart')" title="New Workflow"><i class="material-icons">add_box</i></button>
+      <button id="publish-flowchart" @click="$emit('publish-flowchart')" title="Publish Workflow"><i class="material-icons">save</i></button>
     </div>
   </div>
 </template>
@@ -45,9 +45,7 @@ export default {
 <style scoped>
 .toolbar {
   display: flex;
-  flex-direction: column;
   padding: 10px;
-  background-color: #f5f5f5;
   border-bottom: 1px solid #ddd;
 }
 
@@ -66,6 +64,7 @@ button {
   padding: 8px 12px;
   border: 1px solid #ccc;
   background-color: white;
+  color: white;
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
@@ -77,6 +76,10 @@ button:hover {
 
 .node-button {
   min-width: 80px;
+}
+
+.node-button:hover {
+  color: #4CAF50; /* Action button hover text color */
 }
 
 .node-button-act {
@@ -94,16 +97,6 @@ button:hover {
   color: #f5222d;
 }
 
-#load-workflow {
-  background-color: #722ed1;
-  color: white;
-  border-color: #722ed1;
-}
-
-#load-workflow:hover {
-  background-color: #5b21a6;
-}
-
 #new-flowchart {
   background-color: #faad14;
   color: white;
@@ -111,6 +104,7 @@ button:hover {
 }
 
 #new-flowchart:hover {
+  color: #9C27B0; /* New Flowchart button hover text color */
   background-color: #d48806;
 }
 
@@ -121,6 +115,17 @@ button:hover {
 }
 
 #publish-flowchart:hover {
+  color: #FF9800; /* Publish Flowchart button hover text color */
   background-color: #096dd9;
+}
+
+#load-workflow {
+  background-color: #722ed1;
+  color: white;
+  border-color: #722ed1;
+}
+
+#load-workflow:hover {
+  background-color: #5b21a6;
 }
 </style>

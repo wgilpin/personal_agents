@@ -24,7 +24,7 @@ connections:
     nodeId: node-5
     position: top
 metadata:
-  name: Sample WorkflowUpdated Sample Workflow
+  name: Sample Workflow
 nodes:
 - content: Start workflow 1
   id: node-1

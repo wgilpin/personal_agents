@@ -349,3 +349,7 @@ body {
     outline: none;
     border-color: rgba(255, 255, 255, 0.8);
 }
+
+.app-container .toolbar button:not(:hover) {
+    color: white !important;
+}
