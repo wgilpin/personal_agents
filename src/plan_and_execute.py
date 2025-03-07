@@ -1,4 +1,4 @@
-""" Plan and execute agent """
+"""Plan and execute agent"""
 
 # inspired by
 #     https://colab.research.google.com/github/langchain-ai/langgraph/blob/main/docs/docs/tutorials/plan-and-execute/plan-and-execute.ipynb
@@ -10,7 +10,6 @@ import json
 import operator
 import os
 from typing import Annotated, Dict, List, Optional, Tuple, Union
-
 import yaml
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
@@ -22,6 +21,9 @@ from langgraph.prebuilt import create_react_agent
 from PIL import Image as PILImage
 from pydantic import BaseModel, Field
 from tavily import TavilyClient
+from typing_extensions import TypedDict
+
+from workflows import load_flowchart_from_yaml
 from typing_extensions import TypedDict
 
 # Default model name for the LLM
@@ -347,7 +349,32 @@ class PlanAndExecuteAgent:
         # Compile it into a LangChain Runnable
         return workflow.compile()
 
-    # Removed flowchart-related functions as PlanAndExecuteAgent shouldn't know about flowcharts
+    # Flowchart-related functions
+    async def load_flowchart_from_yaml(self, file_path: str):
+        """
+        Load a flowchart from a YAML file.
+
+        Args:
+            file_path: Path to the YAML file
+
+        Returns:
+            The flowchart data as a dictionary
+        """
+        return await load_flowchart_from_yaml(file_path)
+
+    async def build_custom_workflow_from_flowchart(self, flowchart_data):
+        """
+        Build a custom workflow from a flowchart.
+
+        Args:
+            flowchart_data: The flowchart data as a dictionary
+
+        Returns:
+            A StateGraph workflow
+        """
+        # This is a stub implementation for testing
+        # In a real implementation, this would build a workflow from the flowchart
+        return self.app
 
     async def run(self, input_text: str, config: Dict = None):
         """

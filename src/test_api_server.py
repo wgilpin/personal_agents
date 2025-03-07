@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from api_server import api, WorkflowExecuteRequest, extract_workflow_metadata
+from api_server import api, WorkflowExecuteRequest
+from workflows import extract_workflow_metadata
 
 
 # Create a test client
@@ -146,6 +147,63 @@ async def test_execute_workflow_agent_error(mock_agent_class, mock_workflow_file
     # Check the response
     assert response.status_code == 500
     assert "Test error" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+@patch("api_server.PlanAndExecuteAgent")
+async def test_execute_current_flowchart_uses_first_node_prompt(mock_agent_class):
+    """Test that execute_current_flowchart uses the prompt from the first node"""
+    # Define the path to the test flowchart file
+    workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
+    os.makedirs(workflows_dir, exist_ok=True)
+    test_flowchart_path = os.path.join(workflows_dir, "current_flowchart.yaml")
+
+    # Create a test flowchart with a specific prompt in the first node
+    test_prompt = "This is a test prompt from the first node"
+    test_flowchart = {
+        "metadata": {"name": "Test Flowchart"},
+        "nodes": [
+            {"id": "node1", "type": "act", "prompt": test_prompt},
+            {"id": "node2", "type": "choice", "content": "Make a decision"},
+        ],
+        "connections": [
+            {"from": {"nodeId": "node1"}, "to": {"nodeId": "node2"}},
+        ],
+    }
+
+    # Write the test flowchart to the file
+    with open(test_flowchart_path, "w", encoding="utf-8") as f:
+        yaml.dump(test_flowchart, f)
+
+    try:
+        # Create a mock agent instance
+        mock_agent = MagicMock()
+        mock_agent.run = AsyncMock(
+            return_value={
+                "final_result": "Test result",
+                "goal_assessment_result": json.dumps(["Test item 1", "Test item 2"]),
+                "goal_assessment_feedback": None,
+                "error": None,
+            }
+        )
+        mock_agent_class.return_value = mock_agent
+
+        # Create a test request with a different input
+        request_data = {"input": "This is NOT the prompt that should be used"}
+
+        # Send a request to the endpoint
+        response = client.post("/flowchart/current/execute", json=request_data)
+
+        # Check the response
+        assert response.status_code == 200
+
+        # Verify that the agent was called with the prompt from the first node, not the request input
+        mock_agent.run.assert_called_once_with(test_prompt, request_data.get("config"))
+
+    finally:
+        # Clean up the test file after the test
+        if os.path.exists(test_flowchart_path):
+            os.remove(test_flowchart_path)
 
 
 def test_extract_workflow_metadata(mock_workflow_with_metadata):

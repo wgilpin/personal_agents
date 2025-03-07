@@ -15,44 +15,15 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from plan_and_execute import PlanAndExecuteAgent
+from workflows import (
+    extract_workflow_metadata,
+    save_workflow_from_yaml,
+    list_workflows as get_workflows,
+    update_workflow_name as update_workflow,
+)
 
 # Load environment variables
 load_dotenv()
-
-
-def extract_workflow_metadata(file_path: str) -> dict:
-    """
-    Extract metadata from a workflow file.
-
-    Args:
-        file_path: Path to the workflow file
-
-    Returns:
-        A dictionary containing metadata (name, description)
-    """
-    metadata = {"name": "", "description": ""}
-
-    try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = yaml.safe_load(f)
-
-        # Check if metadata section exists
-        if content and "metadata" in content and isinstance(content["metadata"], dict):
-            if "name" in content["metadata"]:
-                metadata["name"] = content["metadata"]["name"]
-            if "description" in content["metadata"]:
-                metadata["description"] = content["metadata"]["description"]
-
-        # If no description in metadata, get the first node with content as a description
-        if not metadata["description"] and content and "nodes" in content and content["nodes"]:
-            for node in content["nodes"]:
-                if node.get("content"):
-                    metadata["description"] = node["content"]
-                    break
-    except Exception:
-        pass
-
-    return metadata
 
 
 # Create FastAPI app
@@ -94,6 +65,10 @@ class WorkflowExecuteResponse(BaseModel):
     """Response model for the workflow execution endpoint."""
 
     final_result: str = Field(description="The final result of the workflow execution")
+    goal_assessment_result: Optional[str] = Field(
+        default=None, description="The goal assessment result as a JSON string"
+    )
+    goal_assessment_feedback: Optional[str] = Field(default=None, description="Feedback from the goal assessment")
     error: Optional[str] = Field(default=None, description="Error message if execution failed")
 
 
@@ -155,52 +130,18 @@ async def upload_flowchart(file: UploadFile = File(...)) -> Dict[str, Any]:
         # Read the file content
         content = await file.read()
 
-        # Parse the YAML content to validate it
-        try:
-            flowchart_data = yaml.safe_load(content)
-            # Validate flowchart name
-            if not flowchart_data.get("metadata", {}).get("name"):
-                return JSONResponse(
-                    status_code=400,
-                    content={"success": False, "message": "Flowchart must have a name in metadata"},
-                )
-            # Validate node commands
-            for node in flowchart_data.get("nodes", []):
-                # For action nodes, ensure they have a prompt field that's not None
-                if node.get("type") == "act" and ("prompt" not in node or node.get("prompt") is None):
-                    # Add an empty prompt field if it's missing or None
-                    node["prompt"] = ""
-        except yaml.YAMLError as e:
+        # Use the workflow module to save the file
+        success, message, _ = save_workflow_from_yaml(content)
+
+        if not success:
             return JSONResponse(
                 status_code=400,
-                content={"success": False, "message": f"Invalid YAML format: {str(e)}"},
+                content={"success": False, "message": message},
             )
-
-        # Save the file to the workflows directory
-        workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
-        os.makedirs(workflows_dir, exist_ok=True)
-
-        # Get the flowchart name from metadata
-        flowchart_name = flowchart_data.get("metadata", {}).get("name", "Untitled")
-        # Create a safe filename from the flowchart name
-        safe_filename = "".join(c if c.isalnum() else "_" for c in flowchart_name) + ".yaml"
-
-        # Save the file with its name in the workflows directory
-        workflow_path = os.path.join(workflows_dir, safe_filename)
-
-        # Also save as current_flowchart.yaml in the workflows directory for backward compatibility
-        current_flowchart_path = os.path.join(workflows_dir, "current_flowchart.yaml")
-
-        with open(workflow_path, "wb") as f:
-            f.write(content)
-
-        # Also save as current_flowchart.yaml for backward compatibility
-        with open(current_flowchart_path, "wb") as f:
-            f.write(content)
 
         return {
             "success": True,
-            "message": f"Flowchart '{flowchart_name}' saved successfully",
+            "message": message,
         }
 
     except Exception as e:
@@ -252,147 +193,49 @@ async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str
     Returns:
         The results of the flowchart execution.
     """
+    # Get the flowchart file path
+    flowchart_path = os.path.join(os.path.dirname(__file__), "workflows", "current_flowchart.yaml")
+
+    # Check if the file exists
+    if not os.path.exists(flowchart_path):
+        raise HTTPException(status_code=404, detail="Current flowchart not found")
+
+    # Load the flowchart file
+    with open(flowchart_path, "r", encoding="utf-8") as f:
+        flowchart_data = yaml.safe_load(f)
+
+    # Create an agent
+    agent = PlanAndExecuteAgent()
+
+    # Find the first node in the flowchart to get its prompt
+    first_node_prompt = None
+    if "nodes" in flowchart_data and flowchart_data["nodes"]:
+        for node in flowchart_data["nodes"]:
+            if "prompt" in node and node["prompt"] is not None:
+                first_node_prompt = node["prompt"]
+                break
+
+    # If no prompt found in any node, use the request input as fallback
+    prompt_to_use = first_node_prompt if first_node_prompt else request.input
+
+    # Execute the agent with the prompt from the first node
     try:
-        # Get the flowchart file path
-        flowchart_path = os.path.join(os.path.dirname(__file__), "workflows", "current_flowchart.yaml")
+        result = await agent.run(prompt_to_use, request.config)
 
-        # Check if the file exists
-        if not os.path.exists(flowchart_path):
-            raise HTTPException(status_code=404, detail="Current flowchart not found")
-
-        # Load the flowchart file
-        with open(flowchart_path, "r", encoding="utf-8") as f:
-            flowchart_data = yaml.safe_load(f)
-
-        # Initialize variables to store results
-        final_result = ""
-        error = None
-
-        try:
-            # Get the nodes and connections from the flowchart
-            nodes = flowchart_data.get("nodes", [])
-            connections = flowchart_data.get("connections", [])
-
-            if not nodes:
-                raise ValueError("Flowchart has no nodes")
-
-            # Find start node (node with type 'start') or use the first node
-            current_node = None
-            for node in nodes:
-                if node.get("type") == "start":
-                    current_node = node
-                    break
-
-            # If no start node found, use the first node
-            if not current_node:
-                current_node = nodes[0]
-
-            # Create a map of node IDs to nodes for easy lookup
-            node_map = {node["id"]: node for node in nodes}
-
-            # Create a map of connections for easy lookup
-            connection_map = {}
-            if connections:
-                for conn in connections:
-                    from_id = conn.get("from", {}).get("nodeId")
-                    from_pos = conn.get("from", {}).get("position")
-                    to_id = conn.get("to", {}).get("nodeId")
-
-                    if from_id not in connection_map:
-                        connection_map[from_id] = {}
-
-                    connection_map[from_id][from_pos] = to_id
-
-            # Process nodes until we reach a terminal node or have no more connections
-            while current_node:
-                node_id = current_node["id"]
-                node_type = current_node.get("type")
-                node_prompt = current_node.get("prompt", "")
-                node_content = current_node.get("content", "")
-
-                print(f"Processing node: {node_id}, type: {node_type}")
-
-                if node_type == "act":
-                    # For action nodes, use plan_and_execute to run just this node
-                    agent = PlanAndExecuteAgent()
-
-                    # Combine the node prompt with the user input
-                    combined_input = f"{node_prompt}\n\nUser input: {request.input}"
-
-                    # Execute the agent with just this single action node
-                    result = await agent.run(combined_input, request.config)
-
-                    # Add the result to the final result
-                    if result.get("final_result"):
-                        final_result = result["goal_assessment_result"]
-                        print(f"Node {node_id} result: {final_result}")
-
-                elif node_type == "choice":
-                    # For choice nodes, make a simple LLM call to determine which path to take
-                    from langchain_openai import ChatOpenAI
-
-                    # Create a simple LLM
-                    llm = ChatOpenAI(model="gpt-4o")
-
-                    # Combine the node prompt with the user input
-                    combined_input = f"{node_prompt}\n\nUser input: {request.input}\n\nBased on the above, respond with 'true' or 'false'."
-
-                    # Make the LLM call
-                    response = await llm.ainvoke(combined_input)
-                    choice_result = response.content.strip().lower()
-
-                    # Add the choice result to the final result
-                    final_result += f"Node {node_id} ({node_content}): Decision is {choice_result}\n"
-                    print(f"Node {node_id} choice: {choice_result}")
-
-                elif node_type == "terminal":
-                    # Terminal node, add its content to the result and end the workflow
-                    final_result += f"Node {node_id} ({node_content}): Workflow completed\n"
-                    print(f"Terminal node {node_id} reached")
-                    break
-
-                # Determine the next node to process
-                next_node_id = None
-                if node_id in connection_map:
-                    if node_type == "choice":
-                        # For choice nodes, follow the true/false path
-                        if "true" in choice_result and "true" in connection_map[node_id]:
-                            next_node_id = connection_map[node_id]["true"]
-                        elif "false" in choice_result and "false" in connection_map[node_id]:
-                            next_node_id = connection_map[node_id]["false"]
-                        else:
-                            # If no matching position, try to use any available connection
-                            for pos, to_id in connection_map[node_id].items():
-                                next_node_id = to_id
-                                break
-                    else:
-                        # For other nodes, follow the first connection
-                        for pos, to_id in connection_map[node_id].items():
-                            next_node_id = to_id
-                            break
-
-                # Move to the next node if it exists
-                if next_node_id and next_node_id in node_map:
-                    current_node = node_map[next_node_id]
-                    print(f"Moving to next node: {next_node_id}")
-                else:
-                    print(f"No next node found, ending workflow")
-                    current_node = None
-
-        except Exception as e:
-            error = f"Error during flowchart execution: {str(e)}"
-            print(f"\n\n{error}")
+        # Extract all relevant fields from the result
+        final_result = result.get("final_result", "")
+        goal_assessment_result = result.get("goal_assessment_result")
+        goal_assessment_feedback = result.get("goal_assessment_feedback")
+        error = result.get("error")
 
         return {
             "final_result": final_result,
+            "goal_assessment_result": goal_assessment_result,
+            "goal_assessment_feedback": goal_assessment_feedback,
             "error": error,
         }
-
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
     except Exception as e:
-        # Handle all other exceptions
+        # Handle exceptions
         error_message = f"An error occurred while executing flowchart: {str(e)}"
         print(f"\n\n{error_message}")
         raise HTTPException(status_code=500, detail=error_message) from e
@@ -407,41 +250,8 @@ async def list_workflows() -> List[Dict[str, Any]]:
         A list of workflow information including name, filename, and description.
     """
     try:
-        # Get the workflows directory path
-        workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
-
-        # Check if the directory exists
-        if not os.path.exists(workflows_dir):
-            os.makedirs(workflows_dir, exist_ok=True)
-            return []
-
-        # List all YAML files in the directory
-        workflows = []
-        for filename in os.listdir(workflows_dir):
-            if filename.endswith((".yaml", ".yml")):
-                file_path = os.path.join(workflows_dir, filename)
-
-                # Get basic file info
-                default_name = os.path.splitext(filename)[0]
-
-                # Try to extract metadata from the file
-                metadata = extract_workflow_metadata(file_path)
-
-                # Use custom name if available, otherwise use filename
-                display_name = metadata["name"] if metadata["name"] else default_name
-                description = metadata["description"]
-
-                workflows.append(
-                    {
-                        "name": display_name,
-                        "filename": filename,
-                        "description": description,
-                        "default_name": default_name,
-                    }
-                )
-
-        return workflows
-
+        # Use the function from workflows.py to get the list of workflows
+        return await get_workflows()
     except Exception as e:
         # Handle exceptions
         raise HTTPException(status_code=500, detail=f"An error occurred while listing workflows: {str(e)}") from e
@@ -492,148 +302,47 @@ async def execute_workflow(filename: str, request: WorkflowExecuteRequest) -> Di
     Returns:
         The results of the workflow execution.
     """
+    # Get the workflow file path
+    workflow_path = os.path.join(os.path.dirname(__file__), "workflows", filename)
+
+    # Check if the file exists
+    if not os.path.exists(workflow_path):
+        raise HTTPException(status_code=404, detail=f"Workflow file '{filename}' not found")
+
+    # Load the workflow file
+    with open(workflow_path, "r", encoding="utf-8") as f:
+        workflow_data = yaml.safe_load(f)
+
+    # Create an agent
+    agent = PlanAndExecuteAgent()
+
+    # Execute the agent with the input
     try:
-        # Get the workflow file path
-        workflow_path = os.path.join(os.path.dirname(__file__), "workflows", filename)
+        result = await agent.run(request.input, request.config)
 
-        # Check if the file exists
-        if not os.path.exists(workflow_path):
-            raise HTTPException(status_code=404, detail=f"Workflow file '{filename}' not found")
+        # Extract all relevant fields from the result
+        final_result = result.get("final_result", "")
+        goal_assessment_result = result.get("goal_assessment_result")
+        goal_assessment_feedback = result.get("goal_assessment_feedback")
+        error = result.get("error")
 
-        # Load the workflow file
-        with open(workflow_path, "r", encoding="utf-8") as f:
-            workflow_data = yaml.safe_load(f)
+        # Debug print
+        print(f"Result from agent: {result}")
+        print(f"Returning: final_result={final_result}, goal_assessment_result={goal_assessment_result}")
 
-        # Initialize variables to store results
-        final_result = ""
-        error = None
-
-        try:
-            # Get the nodes and connections from the workflow
-            nodes = workflow_data.get("nodes", [])
-            connections = workflow_data.get("connections", [])
-
-            if not nodes:
-                raise ValueError("Workflow has no nodes")
-
-            # Find start node (node with type 'start') or use the first node
-            current_node = None
-            for node in nodes:
-                if node.get("type") == "start":
-                    current_node = node
-                    break
-
-            # If no start node found, use the first node
-            if not current_node:
-                current_node = nodes[0]
-
-            # Create a map of node IDs to nodes for easy lookup
-            node_map = {node["id"]: node for node in nodes}
-
-            # Create a map of connections for easy lookup
-            connection_map = {}
-            if connections:
-                for conn in connections:
-                    from_id = conn.get("from", {}).get("nodeId")
-                    from_pos = conn.get("from", {}).get("position")
-                    to_id = conn.get("to", {}).get("nodeId")
-
-                    if from_id not in connection_map:
-                        connection_map[from_id] = {}
-
-                    connection_map[from_id][from_pos] = to_id
-
-            # Process nodes until we reach a terminal node or have no more connections
-            while current_node:
-                node_id = current_node["id"]
-                node_type = current_node.get("type")
-                node_prompt = current_node.get("prompt", "")
-                node_content = current_node.get("content", "")
-
-                print(f"Processing node: {node_id}, type: {node_type}")
-
-                if node_type == "act":
-                    # For action nodes, use plan_and_execute to run just this node
-                    agent = PlanAndExecuteAgent()
-
-                    # Combine the node prompt with the user input
-                    combined_input = f"{node_prompt}\n\nUser input: {request.input}"
-
-                    # Execute the agent with just this single action node
-                    result = await agent.run(combined_input, request.config)
-
-                    # Add the result to the final result
-                    if result.get("final_result"):
-                        node_result = result["final_result"]
-                        final_result += f"Node {node_id} ({node_content}): {node_result}\n"
-                        print(f"Node {node_id} result: {node_result}")
-
-                elif node_type == "choice":
-                    # For choice nodes, make a simple LLM call to determine which path to take
-                    from langchain_openai import ChatOpenAI
-
-                    # Create a simple LLM
-                    llm = ChatOpenAI(model="gpt-4o")
-
-                    # Combine the node prompt with the user input
-                    combined_input = f"{node_prompt}\n\nUser input: {request.input}\n\nBased on the above, respond with 'true' or 'false'."
-
-                    # Make the LLM call
-                    response = await llm.ainvoke(combined_input)
-                    choice_result = response.content.strip().lower()
-
-                    # Add the choice result to the final result
-                    final_result += f"Node {node_id} ({node_content}): Decision is {choice_result}\n"
-                    print(f"Node {node_id} choice: {choice_result}")
-
-                elif node_type == "terminal":
-                    # Terminal node, add its content to the result and end the workflow
-                    final_result += f"Node {node_id} ({node_content}): Workflow completed\n"
-                    print(f"Terminal node {node_id} reached")
-                    break
-
-                # Determine the next node to process
-                next_node_id = None
-                if node_id in connection_map:
-                    if node_type == "choice":
-                        # For choice nodes, follow the true/false path
-                        if "true" in choice_result and "true" in connection_map[node_id]:
-                            next_node_id = connection_map[node_id]["true"]
-                        elif "false" in choice_result and "false" in connection_map[node_id]:
-                            next_node_id = connection_map[node_id]["false"]
-                        else:
-                            # If no matching position, try to use any available connection
-                            for pos, to_id in connection_map[node_id].items():
-                                next_node_id = to_id
-                                break
-                    else:
-                        # For other nodes, follow the first connection
-                        for pos, to_id in connection_map[node_id].items():
-                            next_node_id = to_id
-                            break
-
-                # Move to the next node if it exists
-                if next_node_id and next_node_id in node_map:
-                    current_node = node_map[next_node_id]
-                    print(f"Moving to next node: {next_node_id}")
-                else:
-                    print(f"No next node found, ending workflow")
-                    current_node = None
-
-        except Exception as e:
-            error = f"Error during workflow execution: {str(e)}"
-            print(f"\n\n{error}")
-
-        return {
+        response_data = {
             "final_result": final_result,
+            "goal_assessment_result": goal_assessment_result,
+            "goal_assessment_feedback": goal_assessment_feedback,
             "error": error,
         }
 
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
+        # Debug print
+        print(f"Response data: {response_data}")
+
+        return response_data
     except Exception as e:
-        # Handle all other exceptions
+        # Handle exceptions
         error_message = f"An error occurred while executing workflow: {str(e)}"
         print(f"\n\n{error_message}")
         raise HTTPException(status_code=500, detail=error_message) from e
@@ -665,19 +374,11 @@ async def update_workflow_name(filename: str, request: UpdateWorkflowNameRequest
         if not os.path.exists(workflow_path):
             raise HTTPException(status_code=404, detail=f"Workflow file '{filename}' not found")
 
-        # Read and parse the workflow file
-        with open(workflow_path, "r", encoding="utf-8") as f:
-            workflow_data = yaml.safe_load(f)
+        # Use the workflow module to update the name
+        result = update_workflow(workflow_path, request.name)
 
-        # Create or update the metadata section
-        if "metadata" not in workflow_data or not isinstance(workflow_data["metadata"], dict):
-            workflow_data["metadata"] = {}
-
-        workflow_data["metadata"]["name"] = request.name
-
-        # Write the updated workflow data back to the file
-        with open(workflow_path, "w", encoding="utf-8") as f:
-            yaml.dump(workflow_data, f)
+        if not result["success"]:
+            raise HTTPException(status_code=500, detail=result["message"])
 
         return {"success": True, "message": "Workflow name updated successfully"}
 
