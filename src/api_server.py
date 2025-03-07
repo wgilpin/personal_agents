@@ -152,36 +152,6 @@ async def upload_flowchart(file: UploadFile = File(...)) -> Dict[str, Any]:
         )
 
 
-@api.get("/flowchart/current", response_model=Dict[str, Any])
-async def get_current_flowchart() -> Dict[str, Any]:
-    """
-    Get the current flowchart from the workflows directory.
-
-    Returns:
-        The current flowchart data.
-    """
-    try:
-        # Get the flowchart file path
-        flowchart_path = os.path.join(os.path.dirname(__file__), "workflows", "current_flowchart.yaml")
-
-        # Check if the file exists
-        if not os.path.exists(flowchart_path):
-            raise HTTPException(status_code=404, detail="Current flowchart not found")
-
-        # Read and parse the flowchart file
-        with open(flowchart_path, "r", encoding="utf-8") as f:
-            flowchart_data = yaml.safe_load(f)
-
-        return flowchart_data
-
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
-    except Exception as e:
-        # Handle all other exceptions
-        raise HTTPException(status_code=500, detail=f"An error occurred while reading flowchart: {str(e)}") from e
-
-
 @api.post("/flowchart/current/execute", response_model=WorkflowExecuteResponse)
 async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str, Any]:
     """
@@ -194,7 +164,7 @@ async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str
         The results of the flowchart execution.
     """
     # Get the flowchart file path
-    flowchart_path = os.path.join(os.path.dirname(__file__), "workflows", "current_flowchart.yaml")
+    flowchart_path = os.path.join(os.path.dirname(__file__), "flowcharts", "current_flowchart.yaml")
 
     # Check if the file exists
     if not os.path.exists(flowchart_path):
@@ -228,8 +198,18 @@ async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str
         goal_assessment_feedback = result.get("goal_assessment_feedback")
         error = result.get("error")
 
+        # Check if final_result is already JSON-formatted
+        try:
+            # Try to parse it as JSON to see if it's valid
+            json.loads(final_result)
+            # If it's valid JSON, return it as is
+            json_formatted = final_result
+        except (json.JSONDecodeError, TypeError):
+            # If it's not valid JSON, wrap it in a JSON structure
+            json_formatted = json.dumps({"response_text": final_result})
+
         return {
-            "final_result": final_result,
+            "final_result": json_formatted,
             "goal_assessment_result": goal_assessment_result,
             "goal_assessment_feedback": goal_assessment_feedback,
             "error": error,
@@ -237,6 +217,37 @@ async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str
     except Exception as e:
         # Handle exceptions
         error_message = f"An error occurred while executing flowchart: {str(e)}"
+        print(f"\n\n{error_message}")
+        raise HTTPException(status_code=500, detail=error_message) from e
+
+
+@api.get("/flowchart/current", response_model=Dict[str, Any])
+async def get_current_flowchart() -> Dict[str, Any]:
+    """
+    Get the current flowchart data.
+
+    Returns:
+        The current flowchart data as a dictionary.
+    """
+    # Get the flowchart file path
+    flowchart_path = os.path.join(os.path.dirname(__file__), "flowcharts", "current_flowchart.yaml")
+
+    # Check if the file exists
+    if not os.path.exists(flowchart_path):
+        raise HTTPException(status_code=404, detail="Current flowchart not found")
+
+    # Load the flowchart file
+    try:
+        with open(flowchart_path, "r", encoding="utf-8") as f:
+            flowchart_data = yaml.safe_load(f)
+
+        # Extract metadata if available
+        metadata = extract_workflow_metadata(flowchart_data)
+
+        return {"flowchart": flowchart_data, "metadata": metadata}
+    except Exception as e:
+        # Handle exceptions
+        error_message = f"An error occurred while reading flowchart: {str(e)}"
         print(f"\n\n{error_message}")
         raise HTTPException(status_code=500, detail=error_message) from e
 
@@ -326,12 +337,22 @@ async def execute_workflow(filename: str, request: WorkflowExecuteRequest) -> Di
         goal_assessment_feedback = result.get("goal_assessment_feedback")
         error = result.get("error")
 
+        # Check if final_result is already JSON-formatted
+        try:
+            # Try to parse it as JSON to see if it's valid
+            json.loads(final_result)
+            # If it's valid JSON, return it as is
+            json_formatted = final_result
+        except (json.JSONDecodeError, TypeError):
+            # If it's not valid JSON, wrap it in a JSON structure
+            json_formatted = json.dumps({"response_text": final_result})
+
         # Debug print
         print(f"Result from agent: {result}")
-        print(f"Returning: final_result={final_result}, goal_assessment_result={goal_assessment_result}")
+        print(f"Returning: final_result={json_formatted}, goal_assessment_result={goal_assessment_result}")
 
         response_data = {
-            "final_result": final_result,
+            "final_result": json_formatted,
             "goal_assessment_result": goal_assessment_result,
             "goal_assessment_feedback": goal_assessment_feedback,
             "error": error,

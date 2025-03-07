@@ -153,6 +153,10 @@ export default {
               }
             } catch (e) {
               console.error('Error parsing final_result:', e);
+              // If final_result is not valid JSON, use it directly as the response text
+              if (response.data.final_result) {
+                responseText = response.data.final_result;
+              }
             }
           }
           

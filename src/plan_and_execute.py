@@ -106,6 +106,7 @@ class PlanAndExecuteAgent:
         @tool
         def search(query: str):
             """Call to surf the web using Tavily."""
+            print(f"Tavily search: {query}")
             return self.tavily_client.search(query)
 
         return search
