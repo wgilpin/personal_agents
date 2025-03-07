@@ -252,8 +252,8 @@ class PlanAndExecuteAgent:
 
         # Create a string representation of past steps
         past_steps_str = ""
-        for step, result in state.get("past_steps", []):
-            past_steps_str += f"Step: {step}\nResult: {result}\n\n"
+        for step, step_result in state.get("past_steps", []):
+            past_steps_str += f"Step: {step}\nResult: {step_result}\n\n"
 
         assessment = await self.goal_assessor.ainvoke(
             {"input": state["input"], "plan": plan_str, "past_steps": past_steps_str}
@@ -505,11 +505,11 @@ if __name__ == "__main__":
 
         # Run the main workflow
         try:
-            result = asyncio.run(agent.run(args.input))
+            run_result = asyncio.run(agent.run(args.input))
 
             # Check if there was an error
-            if result.get("error"):
-                print(f"\nExecution completed with error: {result['error']}")
+            if run_result.get("error"):
+                print(f"\nExecution completed with error: {run_result['error']}")
 
         except KeyboardInterrupt:
             print("\nExecution interrupted by user at the top level.")
