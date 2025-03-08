@@ -5,6 +5,7 @@
 
 import argparse
 import asyncio
+import datetime
 import io
 import json
 import operator
@@ -119,6 +120,7 @@ class PlanAndExecuteAgent:
                 (
                     "system",
                     """For the given objective, come up with a simple step by step plan.
+                    Today's date is {current_date}.
                     This plan should involve individual tasks, that if executed correctly will
                     yield the correct answer.
                     The plan should use the supplied tools when appropriate. The tools are """
@@ -136,6 +138,7 @@ class PlanAndExecuteAgent:
         self.replanner_prompt = ChatPromptTemplate.from_template(
             """
             For the given objective, come up with a simple step by step plan.
+            Today's date is {current_date}.
             This plan should involve individual tasks, that if executed correctly
             will yield the correct answer. Do not add any superfluous steps.
             The result of the final step should be the final answer.
@@ -219,13 +222,17 @@ class PlanAndExecuteAgent:
 
     async def plan_step(self, state: PlanExecute):
         """Generate a new plan based on the current input"""
-        plan = await self.planner.ainvoke({"messages": [("user", state["input"])]})
+        current_date = datetime.datetime.now().strftime("%m/%d/%Y")
+        plan = await self.planner.ainvoke({"messages": [("user", state["input"])], "current_date": current_date})
         return {"plan": plan.steps}
 
     async def replan_step(self, state: PlanExecute):
         """Replan based on the current state"""
         # Prepare the input for the replanner
         replanner_input = state.copy()
+
+        # Add current date to the context
+        replanner_input["current_date"] = datetime.datetime.now().strftime("%m/%d/%Y")
 
         # Format the goal assessment feedback if it exists
         if "goal_assessment_feedback" in state and state["goal_assessment_feedback"]:

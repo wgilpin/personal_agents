@@ -3,8 +3,9 @@
 """Workflow handling logic for the API server."""
 
 import os
+from typing import Any, Dict, List, Optional, Tuple
+
 import yaml
-from typing import Dict, Any, Tuple, Optional, List
 
 
 async def load_flowchart_from_yaml(file_path: str) -> Optional[Dict[str, Any]]:
