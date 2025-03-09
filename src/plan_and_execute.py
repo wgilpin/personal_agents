@@ -10,8 +10,7 @@ import io
 import json
 import operator
 import os
-from typing import Annotated, Dict, List, Optional, Tuple, Union
-import yaml
+from typing import Annotated, Dict, List, Tuple, Union
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
@@ -25,7 +24,6 @@ from tavily import TavilyClient
 from typing_extensions import TypedDict
 
 from workflows import load_flowchart_from_yaml
-from typing_extensions import TypedDict
 
 # Default model name for the LLM
 MODEL_NAME = "gpt-4o"
@@ -370,12 +368,12 @@ class PlanAndExecuteAgent:
         """
         return await load_flowchart_from_yaml(file_path)
 
-    async def build_custom_workflow_from_flowchart(self, flowchart_data):
+    async def build_custom_workflow_from_flowchart(self, _):
         """
         Build a custom workflow from a flowchart.
 
         Args:
-            flowchart_data: The flowchart data as a dictionary
+            _: The flowchart data as a dictionary
 
         Returns:
             A StateGraph workflow
