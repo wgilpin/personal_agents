@@ -121,7 +121,7 @@ async def test_flowchart_workflow():
     mock_workflow = MagicMock()
 
     # Create a custom astream method for the mock workflow
-    async def custom_flowchart_astream(*args, **kwargs):
+    async def custom_flowchart_astream(*_, **__):
         # Execute first node (act)
         yield {
             "node1": {

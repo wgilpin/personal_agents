@@ -16,7 +16,6 @@ from pydantic import BaseModel, Field
 
 from plan_and_execute import PlanAndExecuteAgent
 from workflows import (
-    extract_workflow_metadata,
     save_workflow_from_yaml,
     list_workflows as get_workflows,
     update_workflow_name as update_workflow,
@@ -177,20 +176,63 @@ async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str
     # Create an agent
     agent = PlanAndExecuteAgent()
 
-    # Find the first node in the flowchart to get its prompt
-    first_node_prompt = None
-    if "nodes" in flowchart_data and flowchart_data["nodes"]:
-        for node in flowchart_data["nodes"]:
-            if "prompt" in node and node["prompt"] is not None:
-                first_node_prompt = node["prompt"]
+    # Execute the flowchart by traversing the nodes
+    try:
+        # Build a node map for quick lookup
+        node_map = {}
+        if "nodes" in flowchart_data and flowchart_data["nodes"]:
+            for node in flowchart_data["nodes"]:
+                if "id" in node:
+                    node_map[node["id"]] = node
+
+        # Build a connection map to find next nodes
+        connection_map = {}
+        if "connections" in flowchart_data and flowchart_data["connections"]:
+            for connection in flowchart_data["connections"]:
+                from_node_id = connection["from"]["nodeId"]
+                if from_node_id not in connection_map:
+                    connection_map[from_node_id] = []
+                connection_map[from_node_id].append(connection["to"]["nodeId"])
+
+        # Find the first node (one that has no incoming connections)
+        first_node_id = None
+        all_destination_nodes = set()
+        for connection in flowchart_data.get("connections", []):
+            all_destination_nodes.add(connection["to"]["nodeId"])
+
+        for node in flowchart_data.get("nodes", []):
+            if node["id"] not in all_destination_nodes:
+                first_node_id = node["id"]
                 break
 
-    # If no prompt found in any node, use the request input as fallback
-    prompt_to_use = first_node_prompt if first_node_prompt else request.input
+        # If no starting node found, use the first node in the list
+        if first_node_id is None and flowchart_data.get("nodes"):
+            first_node_id = flowchart_data["nodes"][0]["id"]
 
-    # Execute the agent with the prompt from the first node
-    try:
-        result = await agent.run(prompt_to_use, request.config)
+        # Execute each node in sequence, following the connections
+        current_node_id = first_node_id
+        final_result = ""
+        current_state = request.input  # Initial state from request
+
+        while current_node_id and current_node_id in node_map:
+            current_node = node_map[current_node_id]
+
+            # Get the prompt from the current node
+            node_prompt = current_node.get("prompt", "")
+
+            # Execute the node with the current state as context
+            prompt_with_context = f"{node_prompt}\nContext from previous steps: {current_state}"
+            result = await agent.run(prompt_with_context, request.config)
+
+            # Update the current state with the result
+            current_state = result.get("final_result", "")
+
+            # Find the next node to execute
+            next_nodes = connection_map.get(current_node_id, [])
+            current_node_id = next_nodes[0] if next_nodes else None
+
+        # Use the final state as the result
+        result = {"final_result": current_state}
 
         # Extract all relevant fields from the result
         final_result = result.get("final_result", "")
@@ -296,9 +338,63 @@ async def execute_workflow(filename: str, request: WorkflowExecuteRequest) -> Di
     # Create an agent
     agent = PlanAndExecuteAgent()
 
-    # Execute the agent with the input
+    # Execute the workflow by traversing the nodes
     try:
-        result = await agent.run(request.input, request.config)
+        # Build a node map for quick lookup
+        node_map = {}
+        if "nodes" in workflow_data and workflow_data["nodes"]:
+            for node in workflow_data["nodes"]:
+                if "id" in node:
+                    node_map[node["id"]] = node
+
+        # Build a connection map to find next nodes
+        connection_map = {}
+        if "connections" in workflow_data and workflow_data["connections"]:
+            for connection in workflow_data["connections"]:
+                from_node_id = connection["from"]["nodeId"]
+                if from_node_id not in connection_map:
+                    connection_map[from_node_id] = []
+                connection_map[from_node_id].append(connection["to"]["nodeId"])
+
+        # Find the first node (one that has no incoming connections)
+        first_node_id = None
+        all_destination_nodes = set()
+        for connection in workflow_data.get("connections", []):
+            all_destination_nodes.add(connection["to"]["nodeId"])
+
+        for node in workflow_data.get("nodes", []):
+            if node["id"] not in all_destination_nodes:
+                first_node_id = node["id"]
+                break
+
+        # If no starting node found, use the first node in the list
+        if first_node_id is None and workflow_data.get("nodes"):
+            first_node_id = workflow_data["nodes"][0]["id"]
+
+        # Execute each node in sequence, following the connections
+        current_node_id = first_node_id
+        final_result = ""
+        current_state = request.input  # Initial state from request
+
+        while current_node_id and current_node_id in node_map:
+            current_node = node_map[current_node_id]
+
+            # Get the prompt from the current node
+            node_prompt = current_node.get("prompt", "")
+
+            # Execute the node with the current state as context
+            prompt_with_context = f"{node_prompt}\nContext from previous steps: {current_state}"
+            result = await agent.run(prompt_with_context, request.config)
+
+            # Update the current state with the result
+            current_state = result.get("goal_assessment_result", "")
+
+            # Find the next node to execute
+            next_nodes = connection_map.get(current_node_id, [])
+            current_node_id = next_nodes[0] if next_nodes else None
+
+        # Use the final state as the result
+        result = {"final_result": current_state}
 
         # Extract all relevant fields from the result
         final_result = result.get("final_result", "")

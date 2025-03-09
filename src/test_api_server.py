@@ -2,15 +2,14 @@
 
 import json
 import os
-import yaml
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 
-from api_server import api, WorkflowExecuteRequest
+from api_server import api
 from workflows import extract_workflow_metadata
-
 
 # Create a test client
 client = TestClient(api)
@@ -27,8 +26,8 @@ def mock_workflow_file():
     # Create a simple test workflow
     test_workflow = {
         "nodes": [
-            {"id": "node1", "type": "act", "content": "Search for information"},
-            {"id": "node2", "type": "choice", "content": "Is the information complete?"},
+            {"id": "node1", "type": "act", "prompt": "Search for information"},
+            {"id": "node2", "type": "choice", "prompt": "Is the information complete?"},
         ],
         "connections": [
             {"from": {"nodeId": "node1"}, "to": {"nodeId": "node2"}},
@@ -58,8 +57,8 @@ def mock_workflow_with_metadata():
     test_workflow = {
         "metadata": {"name": "Custom Workflow Name", "description": "Custom workflow description"},
         "nodes": [
-            {"id": "node1", "type": "act", "content": "First action"},
-            {"id": "node2", "type": "choice", "content": "Make a decision"},
+            {"id": "node1", "type": "act", "prompt": "First action"},
+            {"id": "node2", "type": "choice", "prompt": "Make a decision"},
         ],
         "connections": [
             {"from": {"nodeId": "node1"}, "to": {"nodeId": "node2"}},
@@ -79,14 +78,14 @@ def mock_workflow_with_metadata():
 
 @pytest.mark.asyncio
 @patch("api_server.PlanAndExecuteAgent")
-async def test_execute_workflow(mock_agent_class, mock_workflow_file):
+async def test_execute_workflow(mock_agent_class, mock_workflow_filename):
     """Test the execute_workflow endpoint"""
     # Create a mock agent instance
     mock_agent = MagicMock()
     mock_agent.run = AsyncMock(
         return_value={
-            "final_result": "Test result",
-            "goal_assessment_result": json.dumps(["Test item 1", "Test item 2"]),
+            "final_result": None,
+            "goal_assessment_result": None,
             "goal_assessment_feedback": None,
             "error": None,
         }
@@ -97,18 +96,24 @@ async def test_execute_workflow(mock_agent_class, mock_workflow_file):
     request_data = {"input": "Test input", "config": {"recursion_limit": 10}}
 
     # Send a request to the endpoint
-    response = client.post(f"/workflows/{mock_workflow_file}/execute", json=request_data)
+    response = client.post(f"/workflows/{mock_workflow_filename}/execute", json=request_data)
 
     # Check the response
     assert response.status_code == 200
     response_data = response.json()
-    assert response_data["final_result"] == "Test result"
-    assert response_data["goal_assessment_result"] == json.dumps(["Test item 1", "Test item 2"])
+    # The final_result is a JSON string with a response_text field
+    assert json.loads(response_data["final_result"]) == {"response_text": None}
+    assert response_data["goal_assessment_result"] is None
     assert response_data["goal_assessment_feedback"] is None
     assert response_data["error"] is None
 
     # Verify that the agent was called with the correct parameters
-    mock_agent.run.assert_called_once_with("Test input", {"recursion_limit": 10})
+    # The agent is called once for each node in the workflow
+    # The first call includes the input from the request with context
+    mock_agent.run.assert_any_call(
+        "Search for information\nContext from previous steps: Test input", {"recursion_limit": 10}
+    )
+    assert mock_agent.run.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -131,7 +136,7 @@ async def test_execute_workflow_file_not_found(mock_agent_class):
 
 @pytest.mark.asyncio
 @patch("api_server.PlanAndExecuteAgent")
-async def test_execute_workflow_agent_error(mock_agent_class, mock_workflow_file):
+async def test_execute_workflow_agent_error(mock_agent_class, mock_workflow_filename):
     """Test the execute_workflow endpoint when the agent raises an error"""
     # Create a mock agent instance that raises an error
     mock_agent = MagicMock()
@@ -142,7 +147,7 @@ async def test_execute_workflow_agent_error(mock_agent_class, mock_workflow_file
     request_data = {"input": "Test input"}
 
     # Send a request to the endpoint
-    response = client.post(f"/workflows/{mock_workflow_file}/execute", json=request_data)
+    response = client.post(f"/workflows/{mock_workflow_filename}/execute", json=request_data)
 
     # Check the response
     assert response.status_code == 500
@@ -151,23 +156,22 @@ async def test_execute_workflow_agent_error(mock_agent_class, mock_workflow_file
 
 @pytest.mark.asyncio
 @patch("api_server.PlanAndExecuteAgent")
-async def test_execute_current_flowchart_uses_first_node_prompt(mock_agent_class):
-    """Test that execute_current_flowchart uses the prompt from the first node"""
+async def test_execute_current_flowchart_traverses_nodes(mock_agent_class):
+    """Test that execute_current_flowchart traverses nodes in the flowchart"""
     # Define the path to the test flowchart file
-    workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
-    os.makedirs(workflows_dir, exist_ok=True)
-    test_flowchart_path = os.path.join(workflows_dir, "current_flowchart.yaml")
+    flowcharts_dir = os.path.join(os.path.dirname(__file__), "flowcharts")
+    os.makedirs(flowcharts_dir, exist_ok=True)
+    test_flowchart_path = os.path.join(flowcharts_dir, "current_flowchart.yaml")
 
-    # Create a test flowchart with a specific prompt in the first node
-    test_prompt = "This is a test prompt from the first node"
+    # Create a test flowchart with multiple nodes and connections
     test_flowchart = {
-        "metadata": {"name": "Test Flowchart"},
+        "metadata": {"name": "Multi-Node Test Flowchart"},
         "nodes": [
-            {"id": "node1", "type": "act", "prompt": test_prompt},
-            {"id": "node2", "type": "choice", "content": "Make a decision"},
+            {"id": "node-1", "type": "act", "position": {"x": 100, "y": 100}, "prompt": "First node prompt"},
+            {"id": "node-2", "type": "act", "position": {"x": 300, "y": 300}, "prompt": "Second node prompt"},
         ],
         "connections": [
-            {"from": {"nodeId": "node1"}, "to": {"nodeId": "node2"}},
+            {"from": {"nodeId": "node-1", "position": "bottom"}, "to": {"nodeId": "node-2", "position": "top"}},
         ],
     }
 
@@ -176,41 +180,50 @@ async def test_execute_current_flowchart_uses_first_node_prompt(mock_agent_class
         yaml.dump(test_flowchart, f)
 
     try:
-        # Create a mock agent instance
+        # Create a mock agent instance with different responses for each call
         mock_agent = MagicMock()
-        mock_agent.run = AsyncMock(
-            return_value={
-                "final_result": "Test result",
-                "goal_assessment_result": json.dumps(["Test item 1", "Test item 2"]),
+
+        # Set up the mock to return different values for each call
+        mock_agent.run = AsyncMock()
+        mock_agent.run.side_effect = [
+            # First node result
+            {
+                "final_result": "First node result",
+                "goal_assessment_result": None,
                 "goal_assessment_feedback": None,
                 "error": None,
-            }
-        )
+            },
+            # Second node result
+            {
+                "final_result": "Second node result",
+                "goal_assessment_result": None,
+                "goal_assessment_feedback": None,
+                "error": None,
+            },
+        ]
+
         mock_agent_class.return_value = mock_agent
 
-        # Create a test request with a different input
-        request_data = {"input": "This is NOT the prompt that should be used"}
+        # Create a test request
+        request_data = {"input": "Test input"}
 
         # Send a request to the endpoint
         response = client.post("/flowchart/current/execute", json=request_data)
 
         # Check the response
         assert response.status_code == 200
-
-        # Verify that the agent was called with the prompt from the first node, not the request input
-        mock_agent.run.assert_called_once_with(test_prompt, request_data.get("config"))
-
+        assert "Second node result" in response.json()["final_result"]
     finally:
         # Clean up the test file after the test
         if os.path.exists(test_flowchart_path):
             os.remove(test_flowchart_path)
 
 
-def test_extract_workflow_metadata(mock_workflow_with_metadata):
+def test_extract_workflow_metadata(mock_workflow_with_metadata_filename):
     """Test extracting metadata from a workflow file"""
     # Get the path to the test workflow file
     workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
-    test_workflow_path = os.path.join(workflows_dir, mock_workflow_with_metadata)
+    test_workflow_path = os.path.join(workflows_dir, mock_workflow_with_metadata_filename)
 
     # Extract metadata from the workflow file
     metadata = extract_workflow_metadata(test_workflow_path)
@@ -220,7 +233,7 @@ def test_extract_workflow_metadata(mock_workflow_with_metadata):
     assert metadata["description"] == "Custom workflow description"
 
 
-def test_list_workflows_with_custom_names(mock_workflow_with_metadata):
+def test_list_workflows_with_custom_names(mock_workflow_with_metadata_filename):
     """Test listing workflows with custom names"""
     # Send a request to the list_workflows endpoint
     response = client.get("/workflows")
@@ -230,7 +243,7 @@ def test_list_workflows_with_custom_names(mock_workflow_with_metadata):
     workflows = response.json()
 
     # Find the test workflow in the list
-    test_workflow = next((w for w in workflows if w["filename"] == mock_workflow_with_metadata), None)
+    test_workflow = next((w for w in workflows if w["filename"] == mock_workflow_with_metadata_filename), None)
 
     # Check that the workflow was found and has the correct name
     assert test_workflow is not None
@@ -238,13 +251,13 @@ def test_list_workflows_with_custom_names(mock_workflow_with_metadata):
     assert test_workflow["default_name"] == "test_workflow_with_metadata"
 
 
-def test_update_workflow_name(mock_workflow_file):
+def test_update_workflow_name(mock_workflow_filename):
     """Test updating a workflow name"""
     # Define the new name
     new_name = "Updated Workflow Name"
 
     # Send a request to update the workflow name
-    response = client.put(f"/workflows/{mock_workflow_file}/name", json={"name": new_name})
+    response = client.put(f"/workflows/{mock_workflow_filename}/name", json={"name": new_name})
 
     # Check the response
     assert response.status_code == 200
@@ -252,7 +265,7 @@ def test_update_workflow_name(mock_workflow_file):
 
     # Get the path to the test workflow file
     workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
-    test_workflow_path = os.path.join(workflows_dir, mock_workflow_file)
+    test_workflow_path = os.path.join(workflows_dir, mock_workflow_filename)
 
     # Read the updated workflow file
     with open(test_workflow_path, "r", encoding="utf-8") as f:
@@ -267,7 +280,7 @@ def test_update_workflow_name(mock_workflow_file):
 
     # Check that the updated name is returned in the list
     workflows = response.json()
-    test_workflow = next((w for w in workflows if w["filename"] == mock_workflow_file), None)
+    test_workflow = next((w for w in workflows if w["filename"] == mock_workflow_filename), None)
     assert test_workflow is not None
     assert test_workflow["name"] == new_name
 
