@@ -210,7 +210,9 @@ class PlanAndExecuteAgent:
         task = plan[0]
         task_formatted = f"""
             For the following plan:
-            {plan_str}\n\nYou are tasked with executing step {1}, {task}."""
+            {plan_str}\n\nYou are tasked with executing step {1}, {task}.
+            Do not describe the task before giving results and do not
+            summarise after the task unless explicitly asked to do so."""
         agent_response = await self.agent_executor.ainvoke({"messages": [("user", task_formatted)]})
         # Pop the executed step from the plan onto past_steps
         remaining_plan = plan[1:] if len(plan) > 1 else []

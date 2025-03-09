@@ -5,7 +5,7 @@
 import os
 import json
 import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 
 def log_workflow_execution(
