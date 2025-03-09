@@ -221,37 +221,6 @@ async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str
         raise HTTPException(status_code=500, detail=error_message) from e
 
 
-@api.get("/flowchart/current", response_model=Dict[str, Any])
-async def get_current_flowchart() -> Dict[str, Any]:
-    """
-    Get the current flowchart data.
-
-    Returns:
-        The current flowchart data as a dictionary.
-    """
-    # Get the flowchart file path
-    flowchart_path = os.path.join(os.path.dirname(__file__), "flowcharts", "current_flowchart.yaml")
-
-    # Check if the file exists
-    if not os.path.exists(flowchart_path):
-        raise HTTPException(status_code=404, detail="Current flowchart not found")
-
-    # Load the flowchart file
-    try:
-        with open(flowchart_path, "r", encoding="utf-8") as f:
-            flowchart_data = yaml.safe_load(f)
-
-        # Extract metadata if available
-        metadata = extract_workflow_metadata(flowchart_data)
-
-        return {"flowchart": flowchart_data, "metadata": metadata}
-    except Exception as e:
-        # Handle exceptions
-        error_message = f"An error occurred while reading flowchart: {str(e)}"
-        print(f"\n\n{error_message}")
-        raise HTTPException(status_code=500, detail=error_message) from e
-
-
 @api.get("/workflows", response_model=List[Dict[str, Any]])
 async def list_workflows() -> List[Dict[str, Any]]:
     """
