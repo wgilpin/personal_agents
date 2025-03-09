@@ -13,6 +13,7 @@ This project combines a Python FastAPI backend with a Vue.js frontend to create 
 - **API-Driven Architecture**: Separate backend and frontend for flexibility
 - **Goal Assessment**: Evaluate if the original goal has been satisfied
 - **Dynamic Replanning**: Modify plans based on execution results
+- **Workflow Logging**: Automatically record execution details for all workflows
 
 ## System Requirements
 
@@ -71,10 +72,13 @@ This will launch the development server at `http://localhost:8080` with hot-relo
 - `src/api_server.py`: FastAPI server implementation
 - `src/plan_and_execute.py`: Core implementation of the Plan and Execute agent
 - `src/workflows.py`: Workflow management utilities
+- `src/workflow_logger.py`: Logging functionality for workflow executions
+- `src/view_workflow_logs.py`: Utility to view and filter workflow logs
 - `src/ui/vue-app/`: Vue.js frontend application
   - `src/components/`: Vue components including FlowchartCanvas, FlowchartNode, etc.
 - `src/workflows/`: YAML workflow definitions
 - `src/flowcharts/`: Flowchart configurations
+- `logs/`: Directory where workflow execution logs are stored
 
 ## API Endpoints
 
@@ -86,6 +90,35 @@ The API server provides several endpoints:
 - `/workflows`: List all available workflows
 - `/workflows/{filename}`: Get a specific workflow
 - `/workflows/{filename}/execute`: Execute a specific workflow
+
+## Workflow Logging
+
+The system now includes automatic logging of all workflow executions. Each time a workflow completes (successfully or with errors), a log file is created with detailed information about the execution.
+
+### Log Information
+
+Each log entry includes:
+- Workflow name
+- Start date and time
+- End date and time
+- Execution duration in seconds
+- Success status
+- Final result value
+- Error message (if applicable)
+
+### Viewing Logs
+
+A utility script is provided to view and filter workflow execution logs:
+
+```bash
+python src/view_workflow_logs.py --list         # List all logs
+python src/view_workflow_logs.py --latest       # View the most recent log
+python src/view_workflow_logs.py --workflow "My Workflow"  # Filter by workflow name
+python src/view_workflow_logs.py --start-date 2025-03-01   # Filter by date
+python src/view_workflow_logs.py --verbose      # Show full result details
+```
+
+Run `python src/view_workflow_logs.py --help` for a complete list of options.
 
 ## Frontend Components
 

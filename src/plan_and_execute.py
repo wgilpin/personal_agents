@@ -25,6 +25,7 @@ from typing_extensions import TypedDict
 
 from workflows import load_flowchart_from_yaml
 
+
 # Default model name for the LLM
 MODEL_NAME = "gpt-4o"
 
@@ -498,6 +499,13 @@ def parse_args():
 
 # Only run the main function if this script is executed directly, not when imported
 if __name__ == "__main__":
+    # Import here to avoid circular imports
+    from workflow_logger import log_workflow_execution
+
+    # Record start time
+    start_time = datetime.datetime.now()
+    workflow_name = "Command Line Workflow"
+
     args = parse_args()
 
     try:
@@ -512,16 +520,53 @@ if __name__ == "__main__":
         try:
             run_result = asyncio.run(agent.run(args.input))
 
+            # Record end time
+            end_time = datetime.datetime.now()
+
+            # Log successful execution
+            log_workflow_execution(
+                workflow_name=workflow_name,
+                start_time=start_time,
+                end_time=end_time,
+                result=run_result.get("final_result", ""),
+            )
+
             # Check if there was an error
             if run_result.get("error"):
-                print(f"\nExecution completed with error: {run_result['error']}")
+                print(f"\nExecution completed with error: {run_result.get('error')}")
 
         except KeyboardInterrupt:
-            print("\nExecution interrupted by user at the top level.")
+            error_message = "Execution interrupted by user at the top level."
+            print(f"\n{error_message}")
             print("Exiting gracefully...")
+
+            # Record end time for interrupted execution
+            end_time = datetime.datetime.now()
+
+            # Log interrupted execution
+            log_workflow_execution(
+                workflow_name=workflow_name,
+                start_time=start_time,
+                end_time=end_time,
+                result=None,
+                success=False,
+                error=error_message,
+            )
 
     except Exception as e:
         print(f"\nAn unexpected error occurred: {str(e)}")
         import traceback
 
+        # Record end time for error case
+        end_time = datetime.datetime.now()
+
+        # Log failed execution
+        log_workflow_execution(
+            workflow_name=workflow_name,
+            start_time=start_time,
+            end_time=end_time,
+            result=None,
+            success=False,
+            error=str(e),
+        )
         traceback.print_exc()

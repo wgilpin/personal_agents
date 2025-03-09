@@ -4,6 +4,7 @@
 
 import json
 import os
+import datetime
 from typing import Any, Dict, List, Optional
 
 import uvicorn  # pylint: disable=import-error
@@ -20,6 +21,7 @@ from workflows import (
     list_workflows as get_workflows,
     update_workflow_name as update_workflow,
 )
+from workflow_logger import log_workflow_execution
 
 # Load environment variables
 load_dotenv()
@@ -169,6 +171,9 @@ async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str
     if not os.path.exists(flowchart_path):
         raise HTTPException(status_code=404, detail="Current flowchart not found")
 
+    # Record start time
+    start_time = datetime.datetime.now()
+
     # Load the flowchart file
     with open(flowchart_path, "r", encoding="utf-8") as f:
         flowchart_data = yaml.safe_load(f)
@@ -250,6 +255,17 @@ async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str
             # If it's not valid JSON, wrap it in a JSON structure
             json_formatted = json.dumps({"response_text": final_result})
 
+        # Record end time
+        end_time = datetime.datetime.now()
+
+        # Get workflow name from metadata
+        workflow_name = flowchart_data.get("metadata", {}).get("name", "Current Flowchart")
+
+        # Log the workflow execution
+        log_workflow_execution(
+            workflow_name=workflow_name, start_time=start_time, end_time=end_time, result=json_formatted
+        )
+
         return {
             "final_result": json_formatted,
             "goal_assessment_result": goal_assessment_result,
@@ -259,6 +275,23 @@ async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str
     except Exception as e:
         # Handle exceptions
         error_message = f"An error occurred while executing flowchart: {str(e)}"
+
+        # Record end time for error case
+        end_time = datetime.datetime.now()
+
+        # Log the failed execution
+        log_workflow_execution(
+            workflow_name=(
+                flowchart_data.get("metadata", {}).get("name", "Current Flowchart")
+                if "flowchart_data" in locals()
+                else "Current Flowchart"
+            ),
+            start_time=start_time if "start_time" in locals() else datetime.datetime.now(),
+            end_time=end_time,
+            result=None,
+            success=False,
+            error=error_message,
+        )
         print(f"\n\n{error_message}")
         raise HTTPException(status_code=500, detail=error_message) from e
 
@@ -330,6 +363,9 @@ async def execute_workflow(filename: str, request: WorkflowExecuteRequest) -> Di
     # Check if the file exists
     if not os.path.exists(workflow_path):
         raise HTTPException(status_code=404, detail=f"Workflow file '{filename}' not found")
+
+    # Record start time
+    start_time = datetime.datetime.now()
 
     # Load the workflow file
     with open(workflow_path, "r", encoding="utf-8") as f:
@@ -426,10 +462,36 @@ async def execute_workflow(filename: str, request: WorkflowExecuteRequest) -> Di
         # Debug print
         print(f"Response data: {response_data}")
 
+        # Record end time
+        end_time = datetime.datetime.now()
+
+        # Get workflow name from metadata
+        workflow_name = workflow_data.get("metadata", {}).get("name", filename)
+
+        # Log the workflow execution
+        log_workflow_execution(
+            workflow_name=workflow_name, start_time=start_time, end_time=end_time, result=json_formatted
+        )
+
         return response_data
     except Exception as e:
         # Handle exceptions
         error_message = f"An error occurred while executing workflow: {str(e)}"
+
+        # Record end time for error case
+        end_time = datetime.datetime.now()
+
+        # Log the failed execution
+        log_workflow_execution(
+            workflow_name=(
+                workflow_data.get("metadata", {}).get("name", filename) if "workflow_data" in locals() else filename
+            ),
+            start_time=start_time if "start_time" in locals() else datetime.datetime.now(),
+            end_time=end_time,
+            result=None,
+            success=False,
+            error=error_message,
+        )
         print(f"\n\n{error_message}")
         raise HTTPException(status_code=500, detail=error_message) from e
 
