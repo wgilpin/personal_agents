@@ -2,7 +2,7 @@
   <div class="app-container">
     <Toolbar 
       @create-node="createNode" 
-      @new-flowchart="createNewFlowchart" 
+      @new-flowchart="createNewFlowchart"
       @publish-flowchart="publishFlowchart"
       @load-workflow-click="showWorkflowModal = true"
       @start-workflow-click="startWorkflow"
@@ -10,7 +10,7 @@
     <div class="instructions">
       <p>To create a connection: Click on a connection point (white circle) of one node, then click on a connection point of another node.</p>
     </div>
-    <div class="canvas-container">
+    <div class="canvas-container" :class="{ 'with-execution-pane': currentWorkflowExecution }">
       <FlowchartCanvas 
         ref="canvas"
         :nodes="nodes" 
@@ -20,6 +20,19 @@
         @create-connection="createConnection"
         @update-connections="updateConnections"
       />
+    </div>
+
+    <!-- Workflow Execution Info Pane -->
+    <div v-if="currentWorkflowExecution" class="workflow-execution-pane">
+      <div class="execution-header">
+        <h3>Last Execution: {{ formatDate(currentWorkflowExecution.start_time) }}</h3>
+        <span :class="['execution-status', currentWorkflowExecution.success ? 'success' : 'failed']">
+          {{ currentWorkflowExecution.success ? 'Success' : 'Failed' }}
+        </span>
+      </div>
+      <div class="execution-result">
+        {{ formatExecutionResult(currentWorkflowExecution.result) }}
+      </div>
     </div>
     
     <WorkflowModal
@@ -66,6 +79,8 @@ export default {
       workflowStatusMessage: '',
       workflowStatusIsError: false,
       workflowStatusIsLoading: true
+,
+      currentWorkflowExecution: null
     }
   },
   methods: {
@@ -386,6 +401,7 @@ export default {
     loadWorkflow(workflowData) {
       console.log('Loading workflow:', workflowData);
       
+      const workflowFilename = workflowData.metadata?.name ? `${workflowData.metadata.name.replace(/\s+/g, '_')}.yaml` : null;
       // Reset the current flowchart
       this.createNewFlowchart();
       
@@ -472,6 +488,52 @@ export default {
         }
         
       }, 1000); // Increase delay to 1000ms
+
+      // Fetch execution data for the loaded workflow
+      if (workflowFilename) {
+        this.fetchWorkflowExecutionData(workflowFilename);
+      }
+    },
+
+    async fetchWorkflowExecutionData(filename) {
+      try {
+        console.log(`Fetching execution data for ${filename}...`);
+        const response = await axios.get(`http://localhost:8000/workflows/${filename}/logs/latest`);
+        console.log(`Response for ${filename}:`, response.data);
+        if (response.data.found) {
+          this.currentWorkflowExecution = response.data.log;
+          console.log(`Added execution data:`, this.currentWorkflowExecution);
+        } else {
+          this.currentWorkflowExecution = null;
+        }
+      } catch (error) {
+        console.error(`Error fetching execution data for ${filename}:`, error.message, error.response?.data);
+        this.currentWorkflowExecution = null;
+      }
+    },
+
+    formatDate(isoDateString) {
+      return new Date(isoDateString).toLocaleString();
+    },
+
+    formatExecutionResult(result) {
+      if (!result) return 'No result available';
+      
+      // If result is a string that looks like JSON, try to parse it
+      if (typeof result === 'string') {
+        try {
+          const parsed = JSON.parse(result);
+          
+          // If it has a response_text field, return that
+          if (parsed.response_text) {
+            return parsed.response_text;
+          }
+          
+          return JSON.stringify(parsed, null, 2);
+        } catch (e) {
+          return result;
+        }
+      }
     }
   }
 };
@@ -479,4 +541,44 @@ export default {
 
 <style>
 @import '../../../ui/styles.css';
+
+.canvas-container.with-execution-pane {
+  margin-right: 300px; /* Make space for the execution pane */
+}
+
+.workflow-execution-pane {
+  position: fixed;
+  top: 60px; /* Below the toolbar */
+  right: 0;
+  width: 300px;
+  bottom: 0;
+  background-color: #f8f9fa;
+  border-left: 1px solid #ddd;
+  padding: 15px;
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+  overflow-y: auto;
+}
+
+.execution-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.execution-status {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.execution-status.success {
+  background-color: #e6f7ff;
+  color: #1890ff;
+}
+
+.execution-status.failed {
+  background-color: #fff1f0;
+  color: #f5222d;
+}
 </style>

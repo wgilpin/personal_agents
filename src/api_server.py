@@ -22,6 +22,7 @@ from workflows import (
     update_workflow_name as update_workflow,
 )
 from workflow_logger import log_workflow_execution
+from view_workflow_logs import list_log_files, parse_log_file, filter_logs
 
 # Load environment variables
 load_dotenv()
@@ -538,6 +539,52 @@ async def update_workflow_name(filename: str, request: UpdateWorkflowNameRequest
         error_message = f"An error occurred while updating workflow name: {str(e)}"
         print(f"\n\n{error_message}")
         raise HTTPException(status_code=500, detail=error_message) from e
+
+
+@api.get("/workflows/{filename}/logs/latest", response_model=Dict[str, Any])
+async def get_latest_workflow_log(filename: str) -> Dict[str, Any]:
+    """
+    Get the latest execution log for a specific workflow.
+
+    Args:
+        filename: The name of the workflow file.
+
+    Returns:
+        The latest log data for the workflow.
+    """
+    try:
+        # Get the workflow file path to extract the workflow name
+        workflow_path = os.path.join(os.path.dirname(__file__), "workflows", filename)
+
+        # Check if the file exists
+        if not os.path.exists(workflow_path):
+            raise HTTPException(status_code=404, detail=f"Workflow file '{filename}' not found")
+
+        # Read the workflow file to get its name
+        with open(workflow_path, "r", encoding="utf-8") as f:
+            workflow_data = yaml.safe_load(f)
+
+        workflow_name = workflow_data.get("metadata", {}).get("name", os.path.splitext(filename)[0])
+
+        # Get the logs directory
+        logs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+
+        # Get all log files
+        all_log_files = list_log_files(logs_dir)
+
+        # Filter logs for this workflow
+        workflow_logs = filter_logs(all_log_files, workflow_name=workflow_name)
+
+        if not workflow_logs:
+            return {"found": False, "message": "No execution logs found for this workflow"}
+
+        # Get the latest log (first in the list since they're sorted newest first)
+        latest_log = parse_log_file(workflow_logs[0])
+        return {"found": True, "log": latest_log}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"An error occurred while retrieving workflow logs: {str(e)}"
+        ) from e
 
 
 # Run the server when this file is executed directly

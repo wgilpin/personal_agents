@@ -44,6 +44,16 @@
               </div>
             </div>
             <div class="workflow-description">{{ workflow.description || 'No description' }}</div>
+            <div v-if="workflow.executionData" class="workflow-execution-info">
+              <div class="execution-header">
+                <div class="execution-time">
+                  {{ formatDate(workflow.executionData.start_time) }}
+                </div>
+                <span :class="['execution-status', workflow.executionData.success ? 'success' : 'failed']">
+                  {{ workflow.executionData.success ? 'Success' : 'Failed' }}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -99,6 +109,7 @@ export default {
       try {
         const response = await axios.get('http://localhost:8000/workflows');
         this.workflows = response.data.filter(workflow => workflow.filename !== 'current_flowchart.yaml');
+        this.fetchExecutionData();
       } catch (error) {
         console.error('Error fetching workflows:', error);
         this.error = 'Failed to load workflows. Please try again.';
@@ -106,8 +117,48 @@ export default {
         this.loading = false;
       }
     },
+    async fetchExecutionData() {
+      // Fetch execution data for each workflow
+      for (const workflow of this.workflows) {
+        try {
+          console.log(`Fetching execution data for ${workflow.filename}...`);
+          const response = await axios.get(`http://localhost:8000/workflows/${workflow.filename}/logs/latest`);
+          console.log(`Response for ${workflow.filename}:`, response.data);
+          if (response.data.found) {
+            // Add execution data to the workflow object (Vue 3 style)
+            workflow.executionData = response.data.log;
+            console.log(`Added execution data to ${workflow.filename}:`, workflow.executionData);
+          }
+        } catch (error) {
+          console.error(`Error fetching execution data for ${workflow.filename}:`, error.message, error.response?.data);
+        }
+      }
+    },
     selectWorkflow(filename) {
       this.selectedWorkflow = filename;
+      
+      // If the workflow doesn't have execution data yet, fetch it
+      const selectedWorkflow = this.workflows.find(w => w.filename === filename);
+      if (selectedWorkflow && !selectedWorkflow.executionData) {
+        this.fetchWorkflowExecutionData(selectedWorkflow);
+      }
+    },
+    async fetchWorkflowExecutionData(workflow) {
+      try {
+        console.log(`Fetching execution data for ${workflow.filename}...`);
+        const response = await axios.get(`http://localhost:8000/workflows/${workflow.filename}/logs/latest`);
+        console.log(`Response for ${workflow.filename}:`, response.data);
+        if (response.data.found) {
+          // Add execution data to the workflow object (Vue 3 style)
+          workflow.executionData = response.data.log;
+          console.log(`Added execution data to ${workflow.filename}:`, workflow.executionData);
+        }
+      } catch (error) {
+        console.error(`Error fetching execution data for ${workflow.filename}:`, error.message, error.response?.data);
+      }
+    },
+    formatDate(isoDateString) {
+      return new Date(isoDateString).toLocaleString();
     },
     loadSelectedWorkflow(filename) {
       this.selectedWorkflow = filename;
@@ -179,6 +230,32 @@ export default {
         console.error('Error updating workflow name:', error);
         this.error = 'Failed to update workflow name. Please try again.';
       }
+    },
+    formatResult(result) {
+      if (!result) return 'No result available';
+      
+      // If result is a string that looks like JSON, try to parse it
+      if (typeof result === 'string') {
+        try {
+          const parsed = JSON.parse(result);
+          
+          // If it has a response_text field, return that
+          if (parsed.response_text) {
+            // Truncate long results
+            const text = parsed.response_text;
+            return text.length > 100 ? text.substring(0, 100) + '...' : text;
+          }
+          
+          // Otherwise stringify the parsed object
+          const stringified = JSON.stringify(parsed);
+          return stringified.length > 100 ? stringified.substring(0, 100) + '...' : stringified;
+        } catch (e) {
+          // If parsing fails, just return the string
+          return result.length > 100 ? result.substring(0, 100) + '...' : result;
+        }
+      }
+      
+      return String(result);
     }
   }
 };
@@ -312,6 +389,46 @@ export default {
 .workflow-description {
   color: #666;
   font-size: 0.9rem;
+  margin-bottom: 10px;
+}
+
+.workflow-execution-info {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #eee;
+  font-size: 0.9rem;
+}
+
+.execution-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 5px;
+}
+
+.execution-title {
+  font-weight: bold;
+  color: #555;
+}
+
+.execution-status {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+
+.execution-status.success {
+  background-color: #e6f7ff;
+  color: #1890ff;
+}
+
+.execution-status.failed {
+  background-color: #fff1f0;
+  color: #f5222d;
+}
+
+.execution-time {
+  color: #666;
 }
 
 .loading, .error, .no-workflows {
