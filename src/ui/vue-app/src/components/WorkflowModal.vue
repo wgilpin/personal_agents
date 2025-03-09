@@ -22,6 +22,7 @@
             class="workflow-item"
             :class="{ selected: selectedWorkflow === workflow.filename }"
             @click="selectWorkflow(workflow.filename)"
+            @dblclick="loadSelectedWorkflow(workflow.filename)"
           >
             <div class="workflow-header">
               <div v-if="editingWorkflow === workflow.filename" class="workflow-name-edit">
@@ -107,6 +108,10 @@ export default {
     },
     selectWorkflow(filename) {
       this.selectedWorkflow = filename;
+    },
+    loadSelectedWorkflow(filename) {
+      this.selectedWorkflow = filename;
+      this.loadWorkflow();
     },
     async loadWorkflow() {
       if (!this.selectedWorkflow) return;
