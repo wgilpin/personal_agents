@@ -176,6 +176,14 @@ const firstNode = this.nodes.find(node => node.type === 'act')
           this.workflowStatusTitle = 'Workflow Completed Successfully';
           this.workflowStatusMessage = responseText;
           this.workflowStatusIsLoading = false;
+
+          // Fetch execution data to update the pane
+          const workflowFilename = this.currentFlowchartName
+            ? `${this.currentFlowchartName.replace(/\s+/g, '_')}.yaml`
+            : null;
+          if (workflowFilename) {
+            this.fetchWorkflowExecutionData(workflowFilename);
+          }
         })
         .catch(error => {
           this.workflowStatusTitle = 'Workflow Failed!';
@@ -183,6 +191,13 @@ const firstNode = this.nodes.find(node => node.type === 'act')
           this.workflowStatusIsError = true;
           this.workflowStatusIsLoading = false;
         })
+        .finally(() => {
+          const workflowFilename = this.currentFlowchartName ? `${this.currentFlowchartName.replace(/\s+/g, '_')}.yaml` : null;
+
+          if (workflowFilename) {
+            this.fetchWorkflowExecutionData(workflowFilename)
+          }
+        });
     },
     createNode(type, content = '', prompt = '') {
       // Position new node 20px right and 20px down from the last node

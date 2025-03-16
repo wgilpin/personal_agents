@@ -59,7 +59,7 @@ class GoalAssessment(BaseModel):
         description="Final response to the user if goal is satisfied, or explanation of what's missing if not"
     )
     is_list_output: bool = Field(description="Whether the output should be a list (true) or a text object (false)")
-    json_output: Union[List[str], Dict[str, str]] = Field(
+    json_output: Union[List[str], Dict[str, str], str] = Field(
         description="The JSON output, either a list of strings or an object with one entry"
     )
 
@@ -199,7 +199,7 @@ class PlanAndExecuteAgent:
         For example, if the goal was "Get me a list of AI researchers", your json_output should be a list like:
         ["Geoffrey Hinton", "Yann LeCun", "Yoshua Bengio"]
 
-        If the goal was "Explain what AI is", your json_output should be a json object with a single key & value. The key is  "response_text", the value is your answer as a text string.
+        If the goal was "Explain what AI is", your json_output should be a dictionary with a single key "response_text" and the value as your answer text.
         """
 
         self.goal_assessor_user_template = """
@@ -296,16 +296,24 @@ class PlanAndExecuteAgent:
             # Format the response as JSON based on whether it should be a list or text object
             if assessment.is_list_output:
                 # Ensure we have a JSON list
-                json_output = assessment.json_output if isinstance(assessment.json_output, list) else []
+                if isinstance(assessment.json_output, list):
+                    json_output = assessment.json_output
+                else:
+                    # Convert to list if it's not already a list
+                    json_output = []
                 print(f"JSON LIST OUTPUT: {json.dumps(json_output)}")
             else:
                 # Ensure we have a JSON object with one entry
-                json_output = (
-                    assessment.json_output
-                    if isinstance(assessment.json_output, dict)
-                    else {"text": assessment.final_response}
-                )
-                print(f"JSON OBJECT OUTPUT: {json.dumps(json_output)}")
+                if isinstance(assessment.json_output, dict):
+                    json_output = assessment.json_output
+                elif isinstance(assessment.json_output, str):
+                    # If it's a string, wrap it in a dictionary
+                    json_output = {"response_text": assessment.json_output}
+                else:
+                    # Default fallback
+                    json_output = {"response_text": assessment.final_response}
+
+                print(f"JSON OBJECT OUTPUT: {json_output}")
 
             # Return the JSON string as the response
             return {"response": json.dumps(assessment.json_output)}
