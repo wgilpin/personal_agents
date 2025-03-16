@@ -119,10 +119,15 @@ class PlanAndExecuteAgent:
                 (
                     "system",
                     """For the given objective, come up with a simple step by step plan.
-                    Today's date is {current_date}. 
-                    Do not specify any other date unless explicitly instructed to do so.
-                    This plan should involve individual tasks, that if executed correctly will
+                    Your plan should involve individual tasks, that if executed correctly will
                     yield the correct answer.
+                    Today's date is {current_date}. It is very important to use the current date, 
+                    {current_date}, when formulating searches.  
+                    Remember, the date is {current_date}.  Always prioritize searching for 
+                    information relevant to the *current* date and time.  
+                    Never use a date other than today's date, {current_date}, when making searches.
+                    Do NOT search for information from the past unless explicitly requested
+                    by the user.
                     The plan should use the supplied tools when appropriate. The tools are """
                     + ", ".join([f"{tool.name}: {tool.description}" for tool in self.tools])
                     + """Do not add any superfluous steps.
@@ -143,8 +148,13 @@ class PlanAndExecuteAgent:
         self.replanner_prompt = ChatPromptTemplate.from_template(
             """
             For the given objective, come up with a simple step by step plan.
-            Today's date is {current_date}.
-            Do not specify any other date unless explicitly instructed to do so.
+            Today's date is {current_date}. It is very important to use the current date, 
+            {current_date}, when formulating searches.  
+            Remember, the date is {current_date}.  Always prioritize searching for 
+            information relevant to the *current* date and time.  
+            Never use a date other than today's date, {current_date}, when making searches.
+            Do NOT search for information from the past unless explicitly requested
+            by the user.
             This plan should involve individual tasks, that if executed correctly
             will yield the correct answer. Do not add any superfluous steps.
             The plan should use the supplied tools when appropriate. The tools are """
@@ -221,9 +231,10 @@ class PlanAndExecuteAgent:
         plan = state["plan"]
         plan_str = "\n".join(f"{i+1}. {step}" for i, step in enumerate(plan))
         task = plan[0]
+        current_date = datetime.datetime.now().strftime("%m/%d/%Y")
         task_formatted = f"""
             For the following plan:
-            {plan_str}\n\nYou are tasked with executing step {1}, {task}.
+            {plan_str}\n\nYou are tasked with executing step {1}, {task}, given the current date is {current_date}.
             Do not describe the task before giving results and do not
             summarise after the task unless explicitly asked to do so."""
         agent_response = await self.agent_executor.ainvoke({"messages": [("user", task_formatted)]})
