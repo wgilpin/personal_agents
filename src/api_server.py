@@ -32,6 +32,8 @@ load_dotenv()
 # Create FastAPI app
 api = FastAPI(title="Plan and Execute API", description="API for plan_and_execute.py")
 
+print("Server starting...")
+
 # Add CORS middleware
 api.add_middleware(
     CORSMiddleware,
@@ -166,6 +168,7 @@ async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str
     Returns:
         The results of the flowchart execution.
     """
+    print("Executing current flowchart...")
     # Get the flowchart file path
     flowchart_path = os.path.join(os.path.dirname(__file__), "flowcharts", "current_flowchart.yaml")
 
