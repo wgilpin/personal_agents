@@ -222,7 +222,7 @@ async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str
         # Execute each node in sequence, following the connections
         current_node_id = first_node_id
         final_result = ""
-        current_state = request.input  # Initial state from request
+        current_state = ""  # Initial state from request
 
         while current_node_id and current_node_id in node_map:
             current_node = node_map[current_node_id]

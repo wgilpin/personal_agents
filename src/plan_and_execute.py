@@ -10,6 +10,7 @@ import io
 import json
 import operator
 import os
+import re
 from typing import Annotated, Dict, List, Tuple, Union
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
@@ -224,24 +225,95 @@ class PlanAndExecuteAgent:
             GoalAssessment, method="function_calling"
         )
 
+    def _clean_result_text(self, result: str, max_length: int = 2000) -> str:
+        """
+        Clean and process result text to remove repetitive content and limit length.
+
+        Args:
+            result: The raw result text
+            max_length: Maximum length to keep
+
+        Returns:
+            Cleaned and truncated result text
+        """
+        if not result:
+            return ""
+
+        # Detect repetitive request patterns (common in confused LLM outputs)
+        repetitive_patterns = [
+            r"(?:Please provide|I need).*?(?:paragraphs|text|information).*?(?:related to|about).*?(?:individual|person)",
+            r"To (?:proceed|complete|execute).*?(?:step|task).*?(?:need|require).*?(?:paragraphs|text|information)",
+            r"(?:Once you provide|If you provide).*?(?:information|content|text).*?(?:I can|I will)",
+        ]
+
+        # Check for repetitive content
+        repetitive_content = False
+        for pattern in repetitive_patterns:
+            matches = re.findall(pattern, result, re.IGNORECASE)
+            if len(matches) > 2:  # More than 2 similar requests indicates repetition
+                repetitive_content = True
+                break
+
+        if repetitive_content:
+            # Extract just the first part before repetition starts
+            first_sentences = ". ".join(result.split(". ")[:5])
+            return first_sentences + "... [Repetitive content truncated]"
+
+        # Normal truncation for length
+        return result[:max_length] + "..." if len(result) > max_length else result
+
     async def execute_step(self, state: PlanExecute):
         """Execute the first step in the plan and update the state"""
         # Steps is a stack and we execute the top item always,
         # then afterwards we pop the first step to past_steps.
         plan = state["plan"]
+        past_steps = state.get("past_steps", [])
+
+        # Format the past steps and their results for context, with token management
+        past_steps_context = ""
+        if past_steps:
+            # If we have many steps, we need to be selective to avoid context length issues
+            if len(past_steps) > 5:
+                # Include a summary of all steps
+                past_steps_context = "Summary of all previously completed steps:\n"
+                for idx, (step, _) in enumerate(past_steps):
+                    past_steps_context += f"Step {idx+1}: {step}\n"
+
+                past_steps_context += "\nDetailed results of the most recent and relevant steps:\n"
+
+                # Include full details of only the most recent steps
+                recent_steps = past_steps[-3:]  # Last 3 steps
+                for idx, (step, result) in enumerate(recent_steps):
+                    full_idx = len(past_steps) - len(recent_steps) + idx + 1
+                    past_steps_context += f"Step {full_idx}: {step}\n"
+                    # Clean and truncate results to avoid context explosion
+                    result_truncated = self._clean_result_text(result)
+                    past_steps_context += f"Result of Step {full_idx}: {result_truncated}\n\n"
+            else:
+                # If we have few steps, include all details
+                past_steps_context = "Previously completed steps and their results:\n"
+                for idx, (step, result) in enumerate(past_steps):
+                    past_steps_context += f"Step {idx+1}: {step}\n"
+                    # Truncate very long results to avoid context explosion
+                    result_truncated = self._clean_result_text(result)
+                    past_steps_context += f"Result of Step {idx+1}: {result_truncated}\n\n"
+
         plan_str = "\n".join(f"{i+1}. {step}" for i, step in enumerate(plan))
         task = plan[0]
         current_date = datetime.datetime.now().strftime("%m/%d/%Y")
         task_formatted = f"""
             For the following plan:
-            {plan_str}\n\nYou are tasked with executing step {1}, {task}, given the current date is {current_date}.
+            {plan_str}
+            
+            {past_steps_context}
+            You are tasked with executing step {len(past_steps) + 1}, {task}, given the current date is {current_date}.
+            IMPORTANT: Use the results of previous steps to inform your execution of this step.
             Do not describe the task before giving results and do not
             summarise after the task unless explicitly asked to do so."""
         agent_response = await self.agent_executor.ainvoke({"messages": [("user", task_formatted)]})
-        # Pop the executed step from the plan onto past_steps
         remaining_plan = plan[1:] if len(plan) > 1 else []
         return {
-            "past_steps": [(task, agent_response["messages"][-1].content)],
+            "past_steps": past_steps + [(task, agent_response["messages"][-1].content)],
             "plan": remaining_plan,
         }
 
