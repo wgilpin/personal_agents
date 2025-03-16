@@ -125,6 +125,8 @@ class PlanAndExecuteAgent:
                     The plan should use the supplied tools when appropriate. The tools are """
                     + ", ".join([f"{tool.name}: {tool.description}" for tool in self.tools])
                     + """Do not add any superfluous steps.
+                    If one step can do the work of several, use one step.
+                    Do not request feedback or clarification from the user.
                     The result of the final step should be the final answer.
                     Make sure that each step has all the information needed - do not skip steps.""",
                 ),
