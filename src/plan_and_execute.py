@@ -119,7 +119,8 @@ class PlanAndExecuteAgent:
                 (
                     "system",
                     """For the given objective, come up with a simple step by step plan.
-                    Today's date is {current_date}.
+                    Today's date is {current_date}. 
+                    Do not specify any other date unless explicitly instructed to do so.
                     This plan should involve individual tasks, that if executed correctly will
                     yield the correct answer.
                     The plan should use the supplied tools when appropriate. The tools are """
@@ -128,6 +129,9 @@ class PlanAndExecuteAgent:
                     If one step can do the work of several, use one step.
                     Do not request feedback or clarification from the user.
                     The result of the final step should be the final answer.
+                    Ensure the final answer matches for format request, 
+                    for example if asked for a list names, only return a list of names rather than
+                    details ofr each name or a list of companies.
                     Make sure that each step has all the information needed - do not skip steps.""",
                 ),
                 ("placeholder", "{messages}"),
@@ -140,9 +144,16 @@ class PlanAndExecuteAgent:
             """
             For the given objective, come up with a simple step by step plan.
             Today's date is {current_date}.
+            Do not specify any other date unless explicitly instructed to do so.
             This plan should involve individual tasks, that if executed correctly
             will yield the correct answer. Do not add any superfluous steps.
-            The result of the final step should be the final answer.
+            The plan should use the supplied tools when appropriate. The tools are """
+            + ", ".join([f"{tool.name}: {tool.description}" for tool in self.tools])
+            + """The result of the final step should be the final answer.
+            Ensure the final answer matches for format request, 
+            Do not request feedback or clarification from the user.
+            for example if asked for a list names, only return a list of names rather than
+            details ofr each name or a list of companies.
             Make sure that each step has all the information needed - do not skip steps.
 
             Your objective was this:
