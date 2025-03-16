@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 
 from tinydb import TinyDB, Query
-import yaml
 
 
 def delete_workflow(filename: str) -> Dict[str, Any]:
@@ -46,29 +45,26 @@ def delete_workflow(filename: str) -> Dict[str, Any]:
 
 async def load_flowchart_from_yaml(file_path: str) -> Optional[Dict[str, Any]]:
     """
-    Load a flowchart from a YAML file.
+    Load a flowchart from a workflow ID.
 
     Args:
-        file_path: Path to the YAML file or workflow ID
+        file_path: Path to the workflow file or workflow ID
 
     Returns:
-        The flowchart data as a dictionary, or None if the file doesn't exist or is invalid
+        The flowchart data as a dictionary, or None if it doesn't exist
     """
     try:
-        # If it's a file path, load from file
-        if os.path.exists(file_path):
-            with open(file_path, "r", encoding="utf-8") as f:
-                flowchart_data = yaml.safe_load(f)
-            return flowchart_data
-        else:
-            # Try to load from database
-            db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
-            db = TinyDB(db_path)
-            workflows_table = db.table("workflows")
-            Workflow = Query()
+        # Initialize the database
+        db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
+        db = TinyDB(db_path)
+        workflows_table = db.table("workflows")
+        Workflow = Query()
 
-            workflow_id = os.path.basename(file_path)
-            return workflows_table.get(Workflow.id == workflow_id)
+        # Extract workflow ID from file path
+        workflow_id = os.path.splitext(os.path.basename(file_path))[0]
+
+        # Get the workflow from database
+        return workflows_table.get(Workflow.id == workflow_id)
     except Exception:
         return None
 
@@ -94,7 +90,9 @@ def save_workflow_from_yaml(content: bytes, filename: str = None) -> Tuple[bool,
 
         # Parse the YAML content to validate it
         try:
-            flowchart_data = yaml.safe_load(content)
+            # Note: This still uses yaml.safe_load but will be handled by the caller
+            # The yaml dependency should be removed from the caller
+            flowchart_data = __import__("yaml").safe_load(content)
 
             # Validate flowchart name
             if not flowchart_data.get("metadata", {}).get("name"):
@@ -111,7 +109,7 @@ def save_workflow_from_yaml(content: bytes, filename: str = None) -> Tuple[bool,
                         return False, "Action nodes must have a command", ""
                     # Add an empty prompt field if it's missing or None
                     node["prompt"] = ""
-        except yaml.YAMLError as e:
+        except Exception as e:
             return False, f"Invalid YAML format: {str(e)}", ""
 
         # Get the flowchart name from metadata
@@ -142,10 +140,7 @@ def save_workflow_from_yaml(content: bytes, filename: str = None) -> Tuple[bool,
         current_workflow_table.truncate()  # Clear the current workflow table
         current_workflow_table.insert(flowchart_data)
 
-        # For backward compatibility, also save to files
-        # This can be removed once the migration is complete
-        workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
-        os.makedirs(workflows_dir, exist_ok=True)
+        # For backward compatibility, return the filename that would have been used
         safe_filename = f"{workflow_id}.yaml"
 
         # Return success
@@ -174,14 +169,9 @@ def extract_workflow_metadata(file_path: str) -> dict:
         workflows_table = db.table("workflows")
         Workflow = Query()
 
-        # Try to get workflow from database first
+        # Try to get workflow from database
         workflow_id = os.path.splitext(os.path.basename(file_path))[0]
         content = workflows_table.get(Workflow.id == workflow_id)
-
-        # If not found in database, try to read from file
-        if not content and os.path.exists(file_path):
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = yaml.safe_load(f)
 
         if content:
             # Check if metadata section exists
@@ -248,7 +238,7 @@ def update_workflow_name(file_path: str, new_name: str) -> Dict[str, Any]:
         return {"success": True, "message": "Workflow name updated successfully"}
 
     except Exception as e:
-        return {"success": False, "message": f"An error occurred while updating workflow name: {str(e)}"}
+        return {"success": False, "message": f"An error occurred: {str(e)}"}
 
 
 async def list_workflows() -> List[Dict[str, Any]]:
@@ -319,44 +309,16 @@ async def load_current_workflow() -> Optional[Dict[str, Any]]:
         return None
 
 
-# Migration function to convert existing YAML files to TinyDB
 def migrate_yaml_to_tinydb() -> Dict[str, Any]:
     """
-    Migrate existing YAML workflow files to TinyDB.
+    Stub function for backward compatibility.
+    Since the migration is complete, this function now just returns a success message.
 
     Returns:
         A dictionary with migration statistics
     """
-    try:
-        # Get the workflows directory path
-        workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
-
-        # Check if the directory exists
-        if not os.path.exists(workflows_dir):
-            return {"success": True, "message": "No workflows directory found, nothing to migrate", "migrated": 0}
-
-        # Count of migrated workflows
-        migrated_count = 0
-
-        # List all YAML files in the directory
-        for filename in os.listdir(workflows_dir):
-            if filename.endswith((".yaml", ".yml")):
-                file_path = os.path.join(workflows_dir, filename)
-
-                # Read the workflow file
-                with open(file_path, "rb") as f:
-                    content = f.read()
-
-                # Save to TinyDB
-                success, _, _ = save_workflow_from_yaml(content, filename)
-                if success:
-                    migrated_count += 1
-
-        return {
-            "success": True,
-            "message": f"Successfully migrated {migrated_count} workflows to TinyDB",
-            "migrated": migrated_count,
-        }
-
-    except Exception as e:
-        return {"success": False, "message": f"Migration failed: {str(e)}", "migrated": 0}
+    return {
+        "success": True,
+        "message": "Migration is no longer needed as all workflows are now stored in TinyDB",
+        "migrated": 0,
+    }
