@@ -17,3 +17,4 @@ graph.png
 /src/workflows
 /logs
 src/ui/vue-app/package-lock.json
+/src/db

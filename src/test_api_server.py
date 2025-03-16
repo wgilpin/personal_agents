@@ -3,13 +3,16 @@
 import json
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime
 
 import pytest
 import yaml
 from fastapi.testclient import TestClient
+from tinydb import TinyDB, Query
 
 from api_server import api
 from workflows import extract_workflow_metadata
+from workflows import save_workflow_from_yaml
 
 # Create a test client
 client = TestClient(api)
@@ -18,13 +21,17 @@ client = TestClient(api)
 @pytest.fixture
 def mock_workflow_file():
     """Create a mock workflow file for testing"""
-    # Define the path to the test workflow file
-    workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
-    os.makedirs(workflows_dir, exist_ok=True)
-    test_workflow_path = os.path.join(workflows_dir, "test_workflow.yaml")
+    # Initialize the database
+    db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    db = TinyDB(db_path)
+    workflows_table = db.table("workflows")
+    current_workflow_table = db.table("current_workflow")
+    Workflow = Query()
 
     # Create a simple test workflow
     test_workflow = {
+        "metadata": {"name": "Test Workflow"},
         "nodes": [
             {"id": "node1", "type": "act", "prompt": "Search for information"},
             {"id": "node2", "type": "choice", "prompt": "Is the information complete?"},
@@ -34,13 +41,23 @@ def mock_workflow_file():
         ],
     }
 
-    # Write the test workflow to a file
-    with open(test_workflow_path, "w", encoding="utf-8") as f:
-        yaml.dump(test_workflow, f)
+    # Add ID and timestamps
+    workflow_id = "test_workflow"
+    test_workflow["id"] = workflow_id
+    test_workflow["created_at"] = datetime.now().isoformat()
+    test_workflow["updated_at"] = datetime.now().isoformat()
+
+    # Save to TinyDB
+    workflows_table.upsert(test_workflow, Workflow.id == workflow_id)
 
     yield "test_workflow.yaml"
 
-    # Clean up the test file after the test
+    # Clean up the database after the test
+    workflows_table.remove(Workflow.id == workflow_id)
+
+    # Also clean up any file that might have been created for backward compatibility
+    workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
+    test_workflow_path = os.path.join(workflows_dir, "test_workflow.yaml")
     if os.path.exists(test_workflow_path):
         os.remove(test_workflow_path)
 
@@ -48,10 +65,12 @@ def mock_workflow_file():
 @pytest.fixture
 def mock_workflow_with_metadata():
     """Create a mock workflow file with metadata for testing"""
-    # Define the path to the test workflow file
-    workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
-    os.makedirs(workflows_dir, exist_ok=True)
-    test_workflow_path = os.path.join(workflows_dir, "test_workflow_with_metadata.yaml")
+    # Initialize the database
+    db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    db = TinyDB(db_path)
+    workflows_table = db.table("workflows")
+    Workflow = Query()
 
     # Create a test workflow with metadata
     test_workflow = {
@@ -65,20 +84,30 @@ def mock_workflow_with_metadata():
         ],
     }
 
-    # Write the test workflow to a file
-    with open(test_workflow_path, "w", encoding="utf-8") as f:
-        yaml.dump(test_workflow, f)
+    # Add ID and timestamps
+    workflow_id = "test_workflow_with_metadata"
+    test_workflow["id"] = workflow_id
+    test_workflow["created_at"] = datetime.now().isoformat()
+    test_workflow["updated_at"] = datetime.now().isoformat()
+
+    # Save to TinyDB
+    workflows_table.upsert(test_workflow, Workflow.id == workflow_id)
 
     yield "test_workflow_with_metadata.yaml"
 
-    # Clean up the test file after the test
+    # Clean up the database after the test
+    workflows_table.remove(Workflow.id == workflow_id)
+
+    # Also clean up any file that might have been created for backward compatibility
+    workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
+    test_workflow_path = os.path.join(workflows_dir, "test_workflow_with_metadata.yaml")
     if os.path.exists(test_workflow_path):
         os.remove(test_workflow_path)
 
 
 @pytest.mark.asyncio
 @patch("api_server.PlanAndExecuteAgent")
-async def test_execute_workflow(mock_agent_class, mock_workflow_filename):
+async def test_execute_workflow(mock_agent_class, mock_workflow_file):
     """Test the execute_workflow endpoint"""
     # Create a mock agent instance
     mock_agent = MagicMock()
@@ -96,7 +125,7 @@ async def test_execute_workflow(mock_agent_class, mock_workflow_filename):
     request_data = {"input": "Test input", "config": {"recursion_limit": 10}}
 
     # Send a request to the endpoint
-    response = client.post(f"/workflows/{mock_workflow_filename}/execute", json=request_data)
+    response = client.post(f"/workflows/{mock_workflow_file}/execute", json=request_data)
 
     # Check the response
     assert response.status_code == 200
@@ -136,7 +165,7 @@ async def test_execute_workflow_file_not_found(mock_agent_class):
 
 @pytest.mark.asyncio
 @patch("api_server.PlanAndExecuteAgent")
-async def test_execute_workflow_agent_error(mock_agent_class, mock_workflow_filename):
+async def test_execute_workflow_agent_error(mock_agent_class, mock_workflow_file):
     """Test the execute_workflow endpoint when the agent raises an error"""
     # Create a mock agent instance that raises an error
     mock_agent = MagicMock()
@@ -147,7 +176,7 @@ async def test_execute_workflow_agent_error(mock_agent_class, mock_workflow_file
     request_data = {"input": "Test input"}
 
     # Send a request to the endpoint
-    response = client.post(f"/workflows/{mock_workflow_filename}/execute", json=request_data)
+    response = client.post(f"/workflows/{mock_workflow_file}/execute", json=request_data)
 
     # Check the response
     assert response.status_code == 500
@@ -159,13 +188,19 @@ async def test_execute_workflow_agent_error(mock_agent_class, mock_workflow_file
 async def test_execute_current_flowchart_traverses_nodes(mock_agent_class):
     """Test that execute_current_flowchart traverses nodes in the flowchart"""
     # Define the path to the test flowchart file
-    flowcharts_dir = os.path.join(os.path.dirname(__file__), "flowcharts")
-    os.makedirs(flowcharts_dir, exist_ok=True)
-    test_flowchart_path = os.path.join(flowcharts_dir, "current_flowchart.yaml")
+    # Initialize the database
+    db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    db = TinyDB(db_path)
+    current_workflow_table = db.table("current_workflow")
+    workflows_table = db.table("workflows")
 
     # Create a test flowchart with multiple nodes and connections
     test_flowchart = {
         "metadata": {"name": "Multi-Node Test Flowchart"},
+        "id": "current_flowchart",
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
         "nodes": [
             {"id": "node-1", "type": "act", "position": {"x": 100, "y": 100}, "prompt": "First node prompt"},
             {"id": "node-2", "type": "act", "position": {"x": 300, "y": 300}, "prompt": "Second node prompt"},
@@ -175,12 +210,17 @@ async def test_execute_current_flowchart_traverses_nodes(mock_agent_class):
         ],
     }
 
-    # Write the test flowchart to the file
-    with open(test_flowchart_path, "w", encoding="utf-8") as f:
-        yaml.dump(test_flowchart, f)
+    # Save to TinyDB as current workflow
+    current_workflow_table.truncate()
+    current_workflow_table.insert(test_flowchart)
+
+    # Also save to workflows table
+    Workflow = Query()
+    workflows_table.upsert(test_flowchart, Workflow.id == "current_flowchart")
 
     try:
         # Create a mock agent instance with different responses for each call
+
         mock_agent = MagicMock()
 
         # Set up the mock to return different values for each call
@@ -215,26 +255,24 @@ async def test_execute_current_flowchart_traverses_nodes(mock_agent_class):
         assert "Second node result" in response.json()["final_result"]
     finally:
         # Clean up the test file after the test
-        if os.path.exists(test_flowchart_path):
-            os.remove(test_flowchart_path)
+        current_workflow_table.truncate()
+
+        workflows_table.remove(Workflow.id == "current_flowchart")
 
 
-def test_extract_workflow_metadata(mock_workflow_with_metadata_filename):
+def test_extract_workflow_metadata(mock_workflow_with_metadata):
     """Test extracting metadata from a workflow file"""
-    # Get the path to the test workflow file
-    workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
-    test_workflow_path = os.path.join(workflows_dir, mock_workflow_with_metadata_filename)
-
     # Extract metadata from the workflow file
-    metadata = extract_workflow_metadata(test_workflow_path)
+    workflow_id = os.path.splitext(mock_workflow_with_metadata)[0]
+    metadata = extract_workflow_metadata(workflow_id)
 
     # Check that the metadata was extracted correctly
     assert metadata["name"] == "Custom Workflow Name"
     assert metadata["description"] == "Custom workflow description"
 
 
-def test_list_workflows_with_custom_names(mock_workflow_with_metadata_filename):
-    """Test listing workflows with custom names"""
+def test_list_workflows_with_custom_names(mock_workflow_with_metadata):
+    """Test listing workflows with custom names from TinyDB"""
     # Send a request to the list_workflows endpoint
     response = client.get("/workflows")
 
@@ -243,7 +281,7 @@ def test_list_workflows_with_custom_names(mock_workflow_with_metadata_filename):
     workflows = response.json()
 
     # Find the test workflow in the list
-    test_workflow = next((w for w in workflows if w["filename"] == mock_workflow_with_metadata_filename), None)
+    test_workflow = next((w for w in workflows if w["filename"] == mock_workflow_with_metadata), None)
 
     # Check that the workflow was found and has the correct name
     assert test_workflow is not None
@@ -251,26 +289,24 @@ def test_list_workflows_with_custom_names(mock_workflow_with_metadata_filename):
     assert test_workflow["default_name"] == "test_workflow_with_metadata"
 
 
-def test_update_workflow_name(mock_workflow_filename):
+def test_update_workflow_name(mock_workflow_file):
     """Test updating a workflow name"""
     # Define the new name
     new_name = "Updated Workflow Name"
 
     # Send a request to update the workflow name
-    response = client.put(f"/workflows/{mock_workflow_filename}/name", json={"name": new_name})
+    response = client.put(f"/workflows/{mock_workflow_file}/name", json={"name": new_name})
 
     # Check the response
     assert response.status_code == 200
     assert response.json()["success"] is True
 
-    # Get the path to the test workflow file
-    workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
-    test_workflow_path = os.path.join(workflows_dir, mock_workflow_filename)
-
-    # Read the updated workflow file
-    with open(test_workflow_path, "r", encoding="utf-8") as f:
-        workflow_data = yaml.safe_load(f)
-
+    # Get the workflow from TinyDB
+    db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
+    db = TinyDB(db_path)
+    workflows_table = db.table("workflows")
+    Workflow = Query()
+    workflow_data = workflows_table.get(Workflow.id == "test_workflow")
     # Check that the name was updated in the file
     assert "metadata" in workflow_data
     assert workflow_data["metadata"]["name"] == new_name
@@ -280,7 +316,7 @@ def test_update_workflow_name(mock_workflow_filename):
 
     # Check that the updated name is returned in the list
     workflows = response.json()
-    test_workflow = next((w for w in workflows if w["filename"] == mock_workflow_filename), None)
+    test_workflow = next((w for w in workflows if w["filename"] == mock_workflow_file), None)
     assert test_workflow is not None
     assert test_workflow["name"] == new_name
 
@@ -309,6 +345,36 @@ async def test_upload_flowchart_missing_command():
     )
     assert response.status_code == 400
     assert response.json()["message"] == "Node node1 must have a command"
+
+
+@pytest.mark.asyncio
+async def test_migrate_workflows():
+    """Test the migrate_workflows endpoint"""
+    # Create a test YAML file
+    workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
+    os.makedirs(workflows_dir, exist_ok=True)
+    test_workflow_path = os.path.join(workflows_dir, "test_migrate.yaml")
+
+    # Create a simple test workflow
+    test_workflow = {
+        "metadata": {"name": "Test Migration Workflow"},
+        "nodes": [{"id": "node1", "type": "act", "prompt": "Test prompt"}],
+        "connections": [],
+    }
+
+    # Write the test workflow to a file
+    with open(test_workflow_path, "w", encoding="utf-8") as f:
+        yaml.dump(test_workflow, f)
+
+    try:
+        # Send a request to the migrate endpoint
+        response = client.post("/workflows/migrate")
+        assert response.status_code == 200
+        assert response.json()["success"] is True
+    finally:
+        # Clean up the test file
+        if os.path.exists(test_workflow_path):
+            os.remove(test_workflow_path)
 
 
 if __name__ == "__main__":
