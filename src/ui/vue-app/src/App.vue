@@ -589,4 +589,9 @@ const firstNode = this.nodes.find(node => node.type === 'act')
   background-color: #fff1f0;
   color: #f5222d;
 }
+
+.execution-result {
+  padding-left: 2px;
+  padding-right: 2px;;
+}
 </style>
