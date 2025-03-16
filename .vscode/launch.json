@@ -33,6 +33,24 @@
             "sourceMaps": true,
             "preLaunchTask": "Start Vue Dev Server",
             "timeout": 30000
+        },
+        {
+            "name": "Debug All Backend Tests",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "src/run_tests.py",
+            "console": "integratedTerminal",
+            "env": {
+                "SKIP_FRONTEND_TESTS": "1"
+            }
+        },
+        {
+            "name": "Debug Specific Test File",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": ["-xvs", "${file}"],
+            "console": "integratedTerminal"
         }
     ]
 }

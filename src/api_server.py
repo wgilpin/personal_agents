@@ -8,7 +8,6 @@ import datetime
 from typing import Any, Dict, List, Optional
 
 import uvicorn  # pylint: disable=import-error
-import yaml
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile  # pylint: disable=import-error
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,12 +16,11 @@ from pydantic import BaseModel, Field
 
 from plan_and_execute import PlanAndExecuteAgent
 from workflows import (
-    save_workflow_from_yaml,
+    save_workflow,
     list_workflows as get_workflows,
     delete_workflow,
     update_workflow_name as update_workflow,
-    load_flowchart_from_yaml,
-    migrate_yaml_to_tinydb,
+    load_flowchart,
 )
 from workflow_logger import log_workflow_execution
 from view_workflow_logs import list_log_files, parse_log_file, filter_logs
@@ -118,7 +116,7 @@ class FlowchartResponse(BaseModel):
 @api.post("/flowchart", response_model=FlowchartResponse)
 async def upload_flowchart(file: UploadFile = File(...)) -> Dict[str, Any]:
     """
-    Upload a YAML flowchart file to be used by the AI server.
+    Upload a flowchartto be used by the AI server.
 
     Args:
         file: The YAML file containing the flowchart data.
@@ -138,7 +136,7 @@ async def upload_flowchart(file: UploadFile = File(...)) -> Dict[str, Any]:
         content = await file.read()
 
         # Use the workflow module to save the file
-        success, message, _ = save_workflow_from_yaml(content)
+        success, message, _ = save_workflow(content)
 
         if not success:
             return JSONResponse(
@@ -175,7 +173,7 @@ async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str
     start_time = datetime.datetime.now()
 
     # Load the current flowchart from the database
-    flowchart_data = await load_flowchart_from_yaml("current_flowchart")
+    flowchart_data = await load_flowchart("current_flowchart")
 
     # Check if the flowchart exists
     if not flowchart_data:
@@ -329,10 +327,10 @@ async def get_workflow(filename: str) -> Dict[str, Any]:
     """
     try:
         # Extract workflow ID from filename
-        workflow_id = os.path.splitext(filename)[0]
+        workflow_id = filename
 
         # Load the workflow from the database
-        workflow_data = await load_flowchart_from_yaml(workflow_id)
+        workflow_data = await load_flowchart(workflow_id)
 
         if not workflow_data:
             raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
@@ -363,12 +361,14 @@ async def execute_workflow(filename: str, request: WorkflowExecuteRequest) -> Di
     start_time = datetime.datetime.now()
 
     # Extract workflow ID from filename
-    workflow_id = os.path.splitext(filename)[0]
+    workflow_id = filename
 
     # Load the workflow from the database
-    workflow_data = await load_flowchart_from_yaml(workflow_id)
+    workflow_data = await load_flowchart(workflow_id)
     if not workflow_data:
-        raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"An error occurred while reading workflow: Workflow '{workflow_id}' not found"
+        )
 
     # Create an agent
     agent = PlanAndExecuteAgent()
@@ -548,11 +548,8 @@ async def update_workflow_name(filename: str, request: UpdateWorkflowNameRequest
         A dictionary indicating success or failure.
     """
     try:
-        # Get the workflow file path
-        workflow_id = os.path.splitext(filename)[0]
-
         # Use the workflow module to update the name
-        result = update_workflow(workflow_id, request.name)
+        result = update_workflow(filename, request.name)
 
         if not result["success"]:
             raise HTTPException(status_code=500, detail=result["message"])
@@ -583,10 +580,10 @@ async def get_latest_workflow_log(filename: str) -> Dict[str, Any]:
     """
     try:
         # Get the workflow file path to extract the workflow name
-        workflow_id = os.path.splitext(filename)[0]
+        workflow_id = filename
 
         # Load the workflow from the database
-        workflow_data = await load_flowchart_from_yaml(workflow_id)
+        workflow_data = await load_flowchart(workflow_id)
         if not workflow_data:
             raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
 
@@ -610,24 +607,6 @@ async def get_latest_workflow_log(filename: str) -> Dict[str, Any]:
         raise HTTPException(
             status_code=500, detail=f"An error occurred while retrieving workflow logs: {str(e)}"
         ) from e
-
-
-@api.post("/workflows/migrate", response_model=Dict[str, Any])
-async def migrate_workflows() -> Dict[str, Any]:
-    """
-    Migrate existing YAML workflow files to TinyDB.
-
-    Returns:
-        A dictionary with migration statistics
-    """
-    try:
-        result = migrate_yaml_to_tinydb()
-        return result
-    except Exception as e:
-        # Handle exceptions
-        error_message = f"An error occurred during migration: {str(e)}"
-        print(f"\n\n{error_message}")
-        raise HTTPException(status_code=500, detail=error_message) from e
 
 
 # Run the server when this file is executed directly

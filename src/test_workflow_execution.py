@@ -50,7 +50,7 @@ def mock_multi_node_workflow():
     # Save to TinyDB
     workflows_table.upsert(test_workflow, Workflow.id == "test_multi_node_workflow")
 
-    yield "test_multi_node_workflow.yaml"
+    yield "test_multi_node_workflow"
 
     # Clean up the database after the test
     workflows_table.remove(Workflow.id == "test_multi_node_workflow")
@@ -292,7 +292,7 @@ async def test_workflow_with_no_connections(mock_agent_class):
         request_data = {"input": "Test input"}
 
         # Send a request to the endpoint
-        response = client.post("/workflows/test_no_connections.yaml/execute", json=request_data)
+        response = client.post("/workflows/test_no_connections/execute", json=request_data)
 
         # Check the response
         assert response.status_code == 200

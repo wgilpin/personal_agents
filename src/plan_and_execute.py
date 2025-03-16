@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from tavily import TavilyClient
 from typing_extensions import TypedDict
 
-from workflows import load_flowchart_from_yaml
+from workflows import load_flowchart
 
 
 # Default model name for the LLM
@@ -481,7 +481,7 @@ class PlanAndExecuteAgent:
                 return yaml.safe_load(f)
         else:
             # Use the TinyDB implementation
-            return await load_flowchart_from_yaml(file_path)
+            return await load_flowchart(file_path)
 
     async def build_custom_workflow_from_flowchart(self, _):
         """

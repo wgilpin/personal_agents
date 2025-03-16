@@ -33,7 +33,11 @@ def main():
     backend_result = pytest.main(["-xvs"] + test_files)
 
     # Run the frontend tests
-    frontend_result = run_frontend_tests()
+    frontend_result = 0
+    if not os.environ.get("SKIP_FRONTEND_TESTS"):
+        frontend_result = run_frontend_tests()
+    else:
+        print("\nSkipping frontend tests (SKIP_FRONTEND_TESTS is set)")
 
     # Return non-zero if any tests failed
     if backend_result != 0:

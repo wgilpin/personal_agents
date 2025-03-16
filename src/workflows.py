@@ -3,6 +3,7 @@
 """Workflow handling logic for the API server."""
 
 import os
+import json
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 
@@ -11,7 +12,7 @@ from tinydb import TinyDB, Query
 
 def delete_workflow(filename: str) -> Dict[str, Any]:
     """
-    Delete a workflow file from the workflows directory.
+    Delete a workflow from the database.
 
     Args:
         filename: The name or ID of the workflow to delete
@@ -27,7 +28,7 @@ def delete_workflow(filename: str) -> Dict[str, Any]:
         Workflow = Query()
 
         # Extract workflow ID from filename if it's a filename
-        workflow_id = os.path.splitext(filename)[0] if filename.endswith((".yaml", ".yml")) else filename
+        workflow_id = filename
 
         # Check if the workflow exists
         workflow = workflows_table.get(Workflow.id == workflow_id)
@@ -43,12 +44,12 @@ def delete_workflow(filename: str) -> Dict[str, Any]:
         return {"success": False, "message": f"An error occurred while deleting workflow: {str(e)}"}
 
 
-async def load_flowchart_from_yaml(file_path: str) -> Optional[Dict[str, Any]]:
+async def load_flowchart(workflow_id: str) -> Optional[Dict[str, Any]]:
     """
     Load a flowchart from a workflow ID.
 
     Args:
-        file_path: Path to the workflow file or workflow ID
+        workflow_id: ID of the workflow to load
 
     Returns:
         The flowchart data as a dictionary, or None if it doesn't exist
@@ -60,22 +61,19 @@ async def load_flowchart_from_yaml(file_path: str) -> Optional[Dict[str, Any]]:
         workflows_table = db.table("workflows")
         Workflow = Query()
 
-        # Extract workflow ID from file path
-        workflow_id = os.path.splitext(os.path.basename(file_path))[0]
-
         # Get the workflow from database
         return workflows_table.get(Workflow.id == workflow_id)
     except Exception:
         return None
 
 
-def save_workflow_from_yaml(content: bytes, filename: str = None) -> Tuple[bool, str, str]:
+def save_workflow(content: bytes, workflow_id: str = None) -> Tuple[bool, str, str]:
     """
-    Validate and save a YAML workflow file.
+    Validate and save a workflow.
 
     Args:
-        content: The YAML content as bytes
-        filename: Optional filename to use (if None, will be derived from metadata)
+        content: The workflow content as bytes
+        workflow_id: Optional workflow ID to use (if None, will be derived from metadata)
 
     Returns:
         A tuple containing (success, message, saved_filename)
@@ -88,11 +86,10 @@ def save_workflow_from_yaml(content: bytes, filename: str = None) -> Tuple[bool,
         workflows_table = db.table("workflows")
         current_workflow_table = db.table("current_workflow")
 
-        # Parse the YAML content to validate it
+        # Parse the content to validate it
         try:
-            # Note: This still uses yaml.safe_load but will be handled by the caller
-            # The yaml dependency should be removed from the caller
-            flowchart_data = __import__("yaml").safe_load(content)
+            # Parse the JSON content
+            flowchart_data = json.loads(content)
 
             # Validate flowchart name
             if not flowchart_data.get("metadata", {}).get("name"):
@@ -110,16 +107,16 @@ def save_workflow_from_yaml(content: bytes, filename: str = None) -> Tuple[bool,
                     # Add an empty prompt field if it's missing or None
                     node["prompt"] = ""
         except Exception as e:
-            return False, f"Invalid YAML format: {str(e)}", ""
+            return False, f"Invalid workflow format: {str(e)}", ""
 
         # Get the flowchart name from metadata
         flowchart_name = flowchart_data.get("metadata", {}).get("name", "Untitled")
 
         # Create a safe ID from the flowchart name if not provided
-        if not filename:
+        if not workflow_id:
             workflow_id = "".join(c if c.isalnum() else "_" for c in flowchart_name)
         else:
-            workflow_id = os.path.splitext(filename)[0]
+            workflow_id = workflow_id
 
         # Add timestamp and ID to the workflow data
         flowchart_data["id"] = workflow_id
@@ -140,8 +137,8 @@ def save_workflow_from_yaml(content: bytes, filename: str = None) -> Tuple[bool,
         current_workflow_table.truncate()  # Clear the current workflow table
         current_workflow_table.insert(flowchart_data)
 
-        # For backward compatibility, return the filename that would have been used
-        safe_filename = f"{workflow_id}.yaml"
+        # Return the workflow ID
+        safe_filename = workflow_id
 
         # Return success
         return True, f"Flowchart '{flowchart_name}' saved successfully", safe_filename
@@ -150,12 +147,12 @@ def save_workflow_from_yaml(content: bytes, filename: str = None) -> Tuple[bool,
         return False, f"An error occurred: {str(e)}", ""
 
 
-def extract_workflow_metadata(file_path: str) -> dict:
+def extract_workflow_metadata(workflow_id: str) -> dict:
     """
-    Extract metadata from a workflow file.
+    Extract metadata from a workflow.
 
     Args:
-        file_path: Path to the workflow file or workflow ID
+        workflow_id: ID of the workflow
 
     Returns:
         A dictionary containing metadata (name, description)
@@ -170,7 +167,6 @@ def extract_workflow_metadata(file_path: str) -> dict:
         Workflow = Query()
 
         # Try to get workflow from database
-        workflow_id = os.path.splitext(os.path.basename(file_path))[0]
         content = workflows_table.get(Workflow.id == workflow_id)
 
         if content:
@@ -193,12 +189,12 @@ def extract_workflow_metadata(file_path: str) -> dict:
     return metadata
 
 
-def update_workflow_name(file_path: str, new_name: str) -> Dict[str, Any]:
+def update_workflow_name(workflow_id: str, new_name: str) -> Dict[str, Any]:
     """
     Update the name of a workflow in its metadata.
 
     Args:
-        file_path: Path to the workflow file or workflow ID
+        workflow_id: ID of the workflow to update
         new_name: The new name to set for the workflow
 
     Returns:
@@ -211,9 +207,6 @@ def update_workflow_name(file_path: str, new_name: str) -> Dict[str, Any]:
         workflows_table = db.table("workflows")
         current_workflow_table = db.table("current_workflow")
         Workflow = Query()
-
-        # Extract workflow ID from file path
-        workflow_id = os.path.splitext(os.path.basename(file_path))[0]
 
         # Get the workflow from database
         workflow = workflows_table.get(Workflow.id == workflow_id)
@@ -243,7 +236,7 @@ def update_workflow_name(file_path: str, new_name: str) -> Dict[str, Any]:
 
 async def list_workflows() -> List[Dict[str, Any]]:
     """
-    List all available workflows from the workflows directory.
+    List all available workflows from the database.
 
     Returns:
         A list of workflow information including name, filename, and description.
@@ -272,7 +265,7 @@ async def list_workflows() -> List[Dict[str, Any]]:
             workflows.append(
                 {
                     "name": display_name,
-                    "filename": f"{workflow_id}.yaml",  # For backward compatibility
+                    "filename": workflow_id,  # For backward compatibility
                     "id": workflow_id,
                     "description": description,
                     "default_name": workflow_id,
@@ -307,18 +300,3 @@ async def load_current_workflow() -> Optional[Dict[str, Any]]:
         return None
     except Exception:
         return None
-
-
-def migrate_yaml_to_tinydb() -> Dict[str, Any]:
-    """
-    Stub function for backward compatibility.
-    Since the migration is complete, this function now just returns a success message.
-
-    Returns:
-        A dictionary with migration statistics
-    """
-    return {
-        "success": True,
-        "message": "Migration is no longer needed as all workflows are now stored in TinyDB",
-        "migrated": 0,
-    }
