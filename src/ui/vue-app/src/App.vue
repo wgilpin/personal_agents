@@ -31,7 +31,7 @@
         </span>
       </div>
       <div class="execution-result">
-        {{ formatExecutionResult(currentWorkflowExecution.result) }}
+        <div v-html="formatExecutionResult(currentWorkflowExecution.result)"></div>
       </div>
     </div>
     
@@ -58,6 +58,7 @@ import FlowchartCanvas from './components/FlowchartCanvas.vue';
 import WorkflowModal from './components/WorkflowModal.vue';
 import WorkflowStatusModal from './components/WorkflowStatusModal.vue';
 import axios from 'axios';
+import { marked } from 'marked';
 
 export default {
   name: 'App',
@@ -74,6 +75,7 @@ export default {
       nextNodeId: 1,
       lastNodePosition: { x: 100, y: 100 },
       showWorkflowModal: false,
+      currentFlowchartName: null, // Track the current flowchart name
       workflowStatusModalVisible: false,
       workflowStatusTitle: '',
       workflowStatusMessage: '',
@@ -86,70 +88,66 @@ export default {
   methods: {
     startWorkflow () {
       // DEBUGGING: Place a breakpoint on this line to debug workflow execution
+      // Only prompt for a name if the flowchart doesn't already have one
+      let flowchartName = this.currentFlowchartName;
+      if (!flowchartName) {
+        flowchartName = prompt('Enter a name for your flowchart before running:', 'My Flowchart');
+      
+  
+        // If the user cancels, return without running
+        if (!flowchartName) {
+          alert('Flowchart name is required to run the workflow.');
+          return;
+        }
+      
+        // Store the name for future use
+        this.currentFlowchartName = flowchartName;
+      }
+      
+      // Show status modal while saving and running
       this.workflowStatusModalVisible = true
-      this.workflowStatusTitle = 'Workflow Running'
-      this.workflowStatusMessage = 'Please wait while the workflow executes...'
+      this.workflowStatusTitle = 'Saving and Running Workflow'
+      this.workflowStatusMessage = 'Please wait while the flowchart is saved and executed...'
       this.workflowStatusIsError = false
       this.workflowStatusIsLoading = true
 
-      // First try to get the current flowchart from src/flowcharts/
-      axios.get('http://localhost:8000/flowchart/current')
-        .then(response => {
-          // If we successfully got the current flowchart, use it
-          const flowchartData = response.data;
+      // Convert flowchart to YAML format with the provided name
+      const flowchartData = this.convertFlowchartToYaml(flowchartName);
+      
+      // Create a Blob with the YAML content
+      const blob = new Blob([flowchartData], { type: 'text/yaml' });
+      
+      // Create a FormData object to send the file to the server
+      const formData = new FormData();
+      formData.append('file', blob, 'flowchart.yaml');
+      
+      // First save the current flowchart
+      axios.post('http://localhost:8000/flowchart', formData)
+        .then(() => {
+          console.log('Flowchart saved successfully, now executing it directly');
           
-          // Find the first action node (type 'act') to get its prompt
-          let nodePrompt = "Execute workflow" // Default fallback
+          // Find the first action node in our local nodes to get its prompt
+          let nodePrompt = 'Execute workflow'; // Default fallback
           
-          if (flowchartData.nodes && Array.isArray(flowchartData.nodes)) {
-            // Find the first node in the workflow (usually the start node)
-            const firstNode = flowchartData.nodes.find(node => node.type === 'act')
-            
-            if (firstNode && firstNode.prompt) {
-              nodePrompt = firstNode.prompt
-            }
+const firstNode = this.nodes.find(node => node.type === 'act')
+;
+          if (firstNode && firstNode.prompt) {
+            nodePrompt = firstNode.prompt
+;
           }
           
+          // Update status message
+          this.workflowStatusTitle = 'Workflow Running';
+          this.workflowStatusMessage = 'Please wait while the workflow executes...';
+
+          
           // Execute the current flowchart
+    
+      console.log('Executing flowchart with prompt:', nodePrompt);
           return axios.post('http://localhost:8000/flowchart/current/execute', {
             input: nodePrompt
           })
-        })
-        .catch(error => {
-          console.error('Error getting current flowchart:', error);
-          
-          // Fallback to using the first workflow from the workflows directory
-          return axios.get('http://localhost:8000/workflows')
-            .then(response => {
-              if (response.data && response.data.length > 0) {
-                const filename = response.data[0].filename
-                
-                // First get the workflow data to extract the first node's prompt
-                return axios.get(`http://localhost:8000/workflows/${filename}`)
-                  .then(workflowResponse => {
-                    const workflowData = workflowResponse.data
-                    
-                    // Find the first action node (type 'act') to get its prompt
-                    let nodePrompt = "Execute workflow" // Default fallback
-                    
-                    if (workflowData.nodes && Array.isArray(workflowData.nodes)) {
-                      // Find the first node in the workflow (usually the start node)
-                      const firstNode = workflowData.nodes.find(node => node.type === 'act')
-                      
-                      if (firstNode && firstNode.prompt) {
-                        nodePrompt = firstNode.prompt
-                      }
-                    }
-                    
-                    // Now execute the workflow with the node's prompt as input
-                    return axios.post(`http://localhost:8000/workflows/${filename}/execute`, {
-                      input: nodePrompt
-                    })
-                  })
-              } else {
-                throw new Error('No workflows available')
-              }
-            })
+;
         })
         .then(response => {
           // Extract response_text from the response data
@@ -263,6 +261,7 @@ export default {
     createNewFlowchart() {
       // Reset state
       this.nodes = [];
+      this.currentFlowchartName = null; // Reset the flowchart name
       this.connections = [];
       this.nextNodeId = 1;
       this.lastNodePosition = { x: 100, y: 100 };
@@ -270,13 +269,16 @@ export default {
     
     publishFlowchart() {
       // Prompt the user for a flowchart name
-      const flowchartName = prompt('Enter a name for your flowchart:', 'My Flowchart');
+      const flowchartName = prompt('Enter a name for your flowchart:', this.currentFlowchartName || 'My Flowchart');
       
       // If the user cancels, return
       if (!flowchartName) {
         alert('Flowchart name is required.');
         return;
       }
+
+      // Store the name for future use
+      this.currentFlowchartName = flowchartName;
       
       // Convert flowchart to YAML format with the provided name
       const flowchartData = this.convertFlowchartToYaml(flowchartName);
@@ -405,6 +407,11 @@ export default {
       // Reset the current flowchart
       this.createNewFlowchart();
       
+      // Store the workflow name after resetting
+      if (workflowData.metadata?.name) {
+        this.currentFlowchartName = workflowData.metadata.name;
+      }
+      
       // Preserve metadata if it exists
       if (workflowData.metadata) {
         // We don't need to do anything with the metadata here
@@ -494,7 +501,7 @@ export default {
         this.fetchWorkflowExecutionData(workflowFilename);
       }
     },
-
+    
     async fetchWorkflowExecutionData(filename) {
       try {
         console.log(`Fetching execution data for ${filename}...`);
@@ -526,14 +533,15 @@ export default {
           
           // If it has a response_text field, return that
           if (parsed.response_text) {
-            return parsed.response_text;
+            return marked.parse(parsed.response_text);
           }
           
-          return JSON.stringify(parsed, null, 2);
+          return marked.parse(JSON.stringify(parsed, null, 2));
         } catch (e) {
-          return result;
+          return marked.parse(result);
         }
       }
+      return result;
     }
   }
 };

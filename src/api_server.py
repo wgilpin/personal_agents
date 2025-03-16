@@ -19,6 +19,7 @@ from plan_and_execute import PlanAndExecuteAgent
 from workflows import (
     save_workflow_from_yaml,
     list_workflows as get_workflows,
+    delete_workflow,
     update_workflow_name as update_workflow,
 )
 from workflow_logger import log_workflow_execution
@@ -493,6 +494,40 @@ async def execute_workflow(filename: str, request: WorkflowExecuteRequest) -> Di
             success=False,
             error=error_message,
         )
+        print(f"\n\n{error_message}")
+        raise HTTPException(status_code=500, detail=error_message) from e
+
+
+@api.delete("/workflows/{filename}", response_model=Dict[str, Any])
+async def delete_workflow_endpoint(filename: str) -> Dict[str, Any]:
+    """
+    Delete a specific workflow by filename.
+
+    Args:
+        filename: The name of the workflow file to delete.
+
+    Returns:
+        A dictionary indicating success or failure.
+    """
+    try:
+        # Prevent deletion of current_flowchart.yaml
+        if filename == "current_flowchart.yaml":
+            raise HTTPException(status_code=400, detail="Cannot delete the current flowchart")
+
+        # Use the workflow module to delete the workflow
+        result = delete_workflow(filename)
+
+        if not result["success"]:
+            raise HTTPException(status_code=404 if "not found" in result["message"] else 500, detail=result["message"])
+
+        return {"success": True, "message": result["message"]}
+
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # Handle all other exceptions
+        error_message = f"An error occurred while deleting workflow: {str(e)}"
         print(f"\n\n{error_message}")
         raise HTTPException(status_code=500, detail=error_message) from e
 

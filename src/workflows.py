@@ -8,6 +8,34 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
 
+def delete_workflow(filename: str) -> Dict[str, Any]:
+    """
+    Delete a workflow file from the workflows directory.
+
+    Args:
+        filename: The name of the workflow file to delete
+
+    Returns:
+        A dictionary indicating success or failure
+    """
+    try:
+        # Get the workflow file path
+        workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
+        workflow_path = os.path.join(workflows_dir, filename)
+
+        # Check if the file exists
+        if not os.path.exists(workflow_path):
+            return {"success": False, "message": f"Workflow file '{filename}' not found"}
+
+        # Delete the file
+        os.remove(workflow_path)
+
+        return {"success": True, "message": f"Workflow '{filename}' deleted successfully"}
+
+    except Exception as e:
+        return {"success": False, "message": f"An error occurred while deleting workflow: {str(e)}"}
+
+
 async def load_flowchart_from_yaml(file_path: str) -> Optional[Dict[str, Any]]:
     """
     Load a flowchart from a YAML file.
@@ -82,14 +110,23 @@ def save_workflow_from_yaml(content: bytes, filename: str = None) -> Tuple[bool,
         # Save the file with its name in the workflows directory
         workflow_path = os.path.join(workflows_dir, safe_filename)
 
-        # Also save as current_flowchart.yaml in the workflows directory for backward compatibility
+        # Save as current_flowchart.yaml in the workflows directory
         current_flowchart_path = os.path.join(workflows_dir, "current_flowchart.yaml")
+
+        # Also save to the flowcharts directory for the execute endpoint
+        flowcharts_dir = os.path.join(os.path.dirname(__file__), "flowcharts")
+        os.makedirs(flowcharts_dir, exist_ok=True)
+        flowchart_path = os.path.join(flowcharts_dir, "current_flowchart.yaml")
 
         with open(workflow_path, "wb") as f:
             f.write(content)
 
-        # Also save as current_flowchart.yaml for backward compatibility
+        # Save to workflows/current_flowchart.yaml
         with open(current_flowchart_path, "wb") as f:
+            f.write(content)
+
+        # Save to flowcharts/current_flowchart.yaml for the execute endpoint
+        with open(flowchart_path, "wb") as f:
             f.write(content)
 
         return True, f"Flowchart '{flowchart_name}' saved successfully", safe_filename

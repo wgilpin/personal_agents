@@ -16,3 +16,4 @@ graph.png
 /src/flowcharts/current_flowchart.yaml
 /src/workflows
 /logs
+src/ui/vue-app/package-lock.json

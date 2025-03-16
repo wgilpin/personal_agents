@@ -40,7 +40,10 @@
               </div>
               <div v-else class="workflow-name-display">
                 <div class="workflow-name">{{ workflow.name }}</div>
-                <button class="edit-button" @click.stop="startEdit(workflow)">Edit</button>
+                <div class="workflow-actions">
+                  <button class="edit-button" @click.stop="startEdit(workflow)">Edit</button>
+                  <button class="delete-button" @click.stop="confirmDelete(workflow)">Delete</button>
+                </div>
               </div>
             </div>
             <div class="workflow-description">{{ workflow.description || 'No description' }}</div>
@@ -68,6 +71,20 @@
         <button class="cancel-button" @click="close">Cancel</button>
       </div>
     </div>
+    
+    <!-- Delete Confirmation Dialog -->
+    <div v-if="showDeleteConfirm" class="delete-confirm-overlay">
+      <div class="delete-confirm-dialog">
+        <h3>Delete Workflow</h3>
+        <p>Are you sure you want to delete "{{ workflowToDelete?.name }}"?</p>
+        <p class="warning">This action cannot be undone.</p>
+        <div class="delete-confirm-actions">
+          <button class="delete-confirm-button" @click="deleteWorkflow">Delete</button>
+          <button class="delete-cancel-button" @click="cancelDelete">Cancel</button>
+        </div>
+      </div>
+    </div>
+    
   </div>
 </template>
 
@@ -89,7 +106,9 @@ export default {
       error: null,
       selectedWorkflow: null,
       editingWorkflow: null,
-      editedName: ''
+      editedName: '',
+      showDeleteConfirm: false,
+      workflowToDelete: null
     };
   },
   watch: {
@@ -231,6 +250,44 @@ export default {
         this.error = 'Failed to update workflow name. Please try again.';
       }
     },
+    confirmDelete(workflow) {
+      this.workflowToDelete = workflow;
+      this.showDeleteConfirm = true;
+    },
+    cancelDelete() {
+      this.workflowToDelete = null;
+      this.showDeleteConfirm = false;
+    },
+    async deleteWorkflow() {
+      if (!this.workflowToDelete) return;
+      
+      try {
+        const response = await axios.delete(`http://localhost:8000/workflows/${this.workflowToDelete.filename}`);
+        
+        if (response.data.success) {
+          // Remove the workflow from the local list
+          const index = this.workflows.findIndex(w => w.filename === this.workflowToDelete.filename);
+          if (index !== -1) {
+            this.workflows.splice(index, 1);
+          }
+          
+          // If the deleted workflow was selected, clear the selection
+          if (this.selectedWorkflow === this.workflowToDelete.filename) {
+            this.selectedWorkflow = null;
+          }
+          
+          // Close the confirmation dialog
+          this.cancelDelete();
+        } else {
+          this.error = 'Failed to delete workflow. Please try again.';
+          this.cancelDelete();
+        }
+      } catch (error) {
+        console.error('Error deleting workflow:', error);
+        this.error = 'Failed to delete workflow. Please try again.';
+        this.cancelDelete();
+      }
+    },
     formatResult(result) {
       if (!result) return 'No result available';
       
@@ -346,7 +403,7 @@ export default {
 .workflow-name-display {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   width: 100%;
 }
 
@@ -373,7 +430,14 @@ export default {
   margin-bottom: 5px;
 }
 
-.edit-button {
+.workflow-actions {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.edit-button,
+.delete-button {
   background: none;
   border: none;
   color: #1890ff;
@@ -382,8 +446,60 @@ export default {
   font-size: 12px;
 }
 
-.edit-button:hover {
+.delete-button {
+  color: #ff4d4f;
+}
+
+.edit-button:hover,
+.delete-button:hover {
   text-decoration: underline;
+}
+
+/* Delete confirmation dialog styles */
+.delete-confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1100;
+}
+
+.delete-confirm-dialog {
+  background-color: white;
+  border-radius: 5px;
+  padding: 20px;
+  width: 400px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.delete-confirm-dialog h3 {
+  margin-top: 0;
+  color: #ff4d4f;
+}
+
+.delete-confirm-dialog .warning {
+  color: #ff4d4f;
+  font-weight: bold;
+}
+
+.delete-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.delete-confirm-button {
+  background-color: #ff4d4f;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
 }
 
 .workflow-description {
