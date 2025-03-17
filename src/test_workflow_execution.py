@@ -6,15 +6,13 @@ import json
 import os
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
-import uuid
 
 import pytest
 from fastapi.testclient import TestClient
-from tinydb import TinyDB, Query
+from tinydb import Query, TinyDB
 
 from api_server import api
 from db import Database
-
 
 # Create a test client
 client = TestClient(api)
@@ -54,44 +52,6 @@ def mock_multi_node_workflow():
 
     # Clean up the database after the test
     tinydb.workflows_table.remove(tinydb.workflow_query.id == "test_multi_node_workflow")
-
-
-@pytest.fixture
-def mock_multi_node_workflow():
-    """Create a mock workflow file with multiple connected nodes for testing"""
-    # Initialize the database
-    tinydb = Database()
-
-    # create a random ID for a workflow
-    test_workflow_id = "test_workflow_" + uuid.uuid4().hex
-
-    # Create a test workflow with multiple nodes and connections
-    test_workflow = {
-        "metadata": {"name": "Multi-Node Test workflow"},
-        "id": test_workflow_id,
-        "created_at": datetime.now().isoformat(),
-        "updated_at": datetime.now().isoformat(),
-        "nodes": [
-            {"id": "node-1", "type": "act", "position": {"x": 100, "y": 100}, "prompt": "Who's the queen?"},
-            {
-                "id": "node-2",
-                "type": "act",
-                "position": {"x": 300, "y": 300},
-                "prompt": "Write me a one paragraph summary of her life",
-            },
-        ],
-        "connections": [
-            {"from": {"nodeId": "node-1", "position": "bottom"}, "to": {"nodeId": "node-2", "position": "top"}}
-        ],
-    }
-
-    # Save to workflows table
-    tinydb.workflows_table.upsert(test_workflow, tinydb.workflow_query.id == test_workflow_id)
-
-    yield test_workflow_id
-
-    # Clean up the database after the test
-    tinydb.workflows_table.remove(tinydb.workflow_query.id == test_workflow_id)
 
 
 @pytest.mark.asyncio

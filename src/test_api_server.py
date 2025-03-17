@@ -108,7 +108,7 @@ def mock_workflow_id():
 
 @pytest.mark.asyncio
 @patch("api_server.PlanAndExecuteAgent")
-async def test_execute_workflow(mock_agent_class, mock_workflow, mock_workflow_id):
+async def test_execute_workflow(mock_agent_class, mock_workflow, mock_workflow_id):  # pylint: disable=unused-argument
     """Test the execute_workflow endpoint"""
     # Create a mock agent instance
     mock_agent = MagicMock()
@@ -288,7 +288,7 @@ def test_list_workflows_with_custom_names(mock_workflow_with_metadata):
     assert test_workflow["default_name"] == "test_workflow_with_metadata"
 
 
-def test_update_workflow_name(mock_workflow, mock_workflow_id):
+def test_update_workflow_name(mock_workflow, mock_workflow_id):  # pylint: disable=unused-argument
     """Test updating a workflow name"""
     # Define the new name
     new_name = "Updated Workflow Name"

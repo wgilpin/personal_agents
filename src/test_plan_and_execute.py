@@ -1,7 +1,7 @@
 """Tests for the Plan and Execute agent"""
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest  # pylint: disable=import-error
 

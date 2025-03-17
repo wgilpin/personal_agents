@@ -24,8 +24,6 @@ from pydantic import BaseModel, Field
 from tavily import TavilyClient
 from typing_extensions import TypedDict
 
-from workflows import load_workflow
-
 
 # Default model name for the LLM
 MODEL_NAME = "gpt-4o"
