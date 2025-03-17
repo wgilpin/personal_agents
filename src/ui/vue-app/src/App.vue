@@ -1,26 +1,14 @@
 <template>
   <div class="app-container">
-    <Toolbar 
-      @create-node="createNode" 
-      @new-workflow="createNewWorkflow"
-      @publish-workflow="publishWorkflow"
-      @load-workflow-click="showWorkflowModal = true"
- 
-      @start-workflow-click="startWorkflow"
-    />
+    <Toolbar @create-node="createNode" @new-workflow="createNewWorkflow" @publish-workflow="publishWorkflow"
+      @load-workflow-click="showWorkflowModal = true" @start-workflow-click="startWorkflow" />
     <div class="instructions">
-      <p>To create a connection: Click on a connection point (white circle) of one node, then click on a connection point of another node.</p>
+      <p>To create a connection: Click on a connection point (white circle) of one node, then click on a connection
+        point of another node.</p>
     </div>
     <div class="canvas-container" :class="{ 'with-execution-pane': currentWorkflowExecution }">
-      <FlowchartCanvas 
-        ref="canvas"
-        :nodes="nodes" 
-        :connections="connections"
-        @update-node="updateNode"
-        @delete-node="deleteNode"
-        @create-connection="createConnection"
-        @update-connections="updateConnections"
-      />
+      <FlowchartCanvas ref="canvas" :nodes="nodes" :connections="connections" @update-node="updateNode"
+        @delete-node="deleteNode" @create-connection="createConnection" @update-connections="updateConnections" />
     </div>
 
     <!-- Workflow Execution Info Pane -->
@@ -35,21 +23,12 @@
         <div v-html="formatExecutionResult(currentWorkflowExecution.result)"></div>
       </div>
     </div>
-    
-    <WorkflowModal
-      :show="showWorkflowModal"
-      @close="showWorkflowModal = false"
-      @load-workflow="loadWorkflow"
-    />
 
-    <WorkflowStatusModal
-      :show="workflowStatusModalVisible"
-      :title="workflowStatusTitle"
-      :message="workflowStatusMessage"
-      :isError="workflowStatusIsError"
-      :isLoading="workflowStatusIsLoading"
-      @close="workflowStatusModalVisible = false"
-    />
+    <WorkflowModal :show="showWorkflowModal" @close="showWorkflowModal = false" @load-workflow="loadWorkflow" />
+
+    <WorkflowStatusModal :show="workflowStatusModalVisible" :title="workflowStatusTitle"
+      :message="workflowStatusMessage" :isError="workflowStatusIsError" :isLoading="workflowStatusIsLoading"
+      @close="workflowStatusModalVisible = false" />
   </div>
 </template>
 
@@ -69,14 +48,14 @@ export default {
     WorkflowModal,
     WorkflowStatusModal
   },
-  data () {
+  data() {
     return {
       nodes: [],
       connections: [],
       nextNodeId: 1,
       lastNodePosition: { x: 100, y: 100 },
       showWorkflowModal: false,
- 
+
       currentWorkflowId: null, // Track the current workflow ID
       currentWorkflowName: null, // Track the current workflow name
       workflowStatusModalVisible: false,
@@ -84,29 +63,29 @@ export default {
       workflowStatusMessage: '',
       workflowStatusIsError: false,
       workflowStatusIsLoading: true
-,
+      ,
       currentWorkflowExecution: null
     }
   },
   methods: {
-    startWorkflow () {
+    startWorkflow() {
       // DEBUGGING: Place a breakpoint on this line to debug workflow execution
       // Only prompt for a name if the workflow doesn't already have one
       let workflowName = this.currentWorkflowName;
       if (!workflowName) {
         workflowName = prompt('Enter a name for your workflow before running:', 'My Workflow');
-      
-  
+
+
         // If the user cancels, return without running
         if (!workflowName) {
           alert('Workflow name is required to run the workflow.');
           return;
         }
-      
+
         // Store the name for future use
         this.currentWorkflowName = workflowName;
       }
-      
+
       // Show status modal while saving and running
       this.workflowStatusModalVisible = true
       this.workflowStatusTitle = 'Saving and Running Workflow'
@@ -114,53 +93,53 @@ export default {
       this.workflowStatusIsError = false
       this.workflowStatusIsLoading = true
 
-      // Convert workflow to YAML format with the provided name
-      const workflowData = this.convertWorkflowToYaml(workflowName);
-      
-      // Create a Blob with the YAML content
-      const blob = new Blob([workflowData], { type: 'text/yaml' });
-      
+      // Convert workflow to JSON format with the provided name
+      const workflowData = this.convertWorkflowToJson(workflowName);
+
+      // Create a Blob with the JSON content
+      const blob = new Blob([workflowData], { type: 'application/json' });
+
       // Create a FormData object to send the file to the server
       const formData = new FormData();
-      formData.append('file', blob, 'workflow.yaml');
-      
+      formData.append('file', blob, 'workflow.json');
+
       // First save the workflow
       axios.post('http://localhost:8000/workflows', formData)
         .then(() => {
           console.log('Flowchart saved successfully, now executing it directly');
-          
+
           // Find the first action node in our local nodes to get its prompt
           let nodePrompt = 'Execute workflow'; // Default fallback
-          
-const firstNode = this.nodes.find(node => node.type === 'act')
-;
+
+          const firstNode = this.nodes.find(node => node.type === 'act')
+            ;
           if (firstNode && firstNode.prompt) {
             nodePrompt = firstNode.prompt
-;
+              ;
           }
-          
+
           // Update status message
           this.workflowStatusTitle = 'Workflow Running';
           this.workflowStatusMessage = 'Please wait while the workflow executes...';
 
-          
-// Generate a workflow ID from the name if we don't have one yet
+
+          // Generate a workflow ID from the name if we don't have one yet
           if (!this.currentWorkflowId) {
             this.currentWorkflowId = workflowName.replace(/\s+/g, '_');
           }
-          
-              // Execute the workflow
-    
-      console.log('Executing workflow with prompt:', nodePrompt);
+
+          // Execute the workflow
+
+          console.log('Executing workflow with prompt:', nodePrompt);
           return axios.post(`http://localhost:8000/workflows/${this.currentWorkflowId}/execute`, {
             input: nodePrompt
           })
-;
+            ;
         })
         .then(response => {
           // Extract response_text from the response data
           let responseText = 'Completed';
-          
+
           // First check if response_text exists directly in response.data
           if (response.data?.response_text) {
             responseText = response.data.response_text;
@@ -180,7 +159,7 @@ const firstNode = this.nodes.find(node => node.type === 'act')
               }
             }
           }
-          
+
           this.workflowStatusTitle = 'Workflow Completed Successfully';
           this.workflowStatusMessage = responseText;
           this.workflowStatusIsLoading = false;
@@ -211,13 +190,13 @@ const firstNode = this.nodes.find(node => node.type === 'act')
       // Position new node 20px right and 20px down from the last node
       const x = this.lastNodePosition.x + 20;
       const y = this.lastNodePosition.y + 20;
-      
+
       // Ensure node is within canvas bounds (assuming canvas is at least 800x600)
       const boundedX = Math.max(20, Math.min(780, x));
       const boundedY = Math.max(20, Math.min(580, y));
-      
+
       const nodeId = `node-${this.nextNodeId++}`;
-      
+
       const newNode = {
         id: nodeId,
         type,
@@ -226,46 +205,46 @@ const firstNode = this.nodes.find(node => node.type === 'act')
         content,
         prompt: (type === 'act' || type === 'choice') ? prompt : null
       };
-      
+
       this.nodes.push(newNode);
-      
+
       // Update last node position
       this.lastNodePosition = { x: boundedX, y: boundedY };
-      
+
       return newNode;
     },
-    
+
     updateNode(nodeId, updates) {
       console.log('updateNode called with nodeId:', nodeId, 'updates:', updates, 'typeof nodeId:', typeof nodeId, 'typeof updates:', typeof updates);
       const nodeIndex = this.nodes.findIndex(n => n.id === nodeId);
       if (nodeIndex !== -1) {
         this.nodes[nodeIndex] = { ...this.nodes[nodeIndex], ...updates };
-        
+
         // If position was updated, update last node position
         if (updates.x !== undefined && updates.y !== undefined) {
           this.lastNodePosition = { x: updates.x, y: updates.y };
         }
       }
     },
-    
+
     deleteNode(nodeId) {
       // Remove node
       this.nodes = this.nodes.filter(n => n.id !== nodeId);
-      
+
       // Remove connections
       this.connections = this.connections.filter(
         c => c.startNodeId !== nodeId && c.endNodeId !== nodeId
       );
     },
-    
+
     createConnection(startNodeId, startPosition, endNodeId, endPosition) {
       const connectionId = `connection-${startNodeId}-${startPosition}-${endNodeId}-${endPosition}`;
-      
+
       // Check if connection already exists
       if (this.connections.some(c => c.id === connectionId)) {
         return;
       }
-      
+
       // Add to connections
       this.connections.push({
         id: connectionId,
@@ -275,12 +254,12 @@ const firstNode = this.nodes.find(node => node.type === 'act')
         endPosition
       });
     },
-    
+
     updateConnections() {
       // This method is a placeholder for any additional logic needed
       // The actual connection path updates are handled in the FlowchartCanvas component
     },
-    
+
     createNewWorkflow() {
       // Reset state
       this.nodes = [];
@@ -290,11 +269,11 @@ const firstNode = this.nodes.find(node => node.type === 'act')
       this.nextNodeId = 1;
       this.lastNodePosition = { x: 100, y: 100 };
     },
-    
+
     publishWorkflow() {
       // Prompt the user for a workflow name
       const workflowName = prompt('Enter a name for your workflow:', this.currentWorkflowName || 'My Workflow');
-      
+
       // If the user cancels, return
       if (!workflowName) {
         alert('Workflow name is required.');
@@ -303,24 +282,24 @@ const firstNode = this.nodes.find(node => node.type === 'act')
 
       // Store the name for future use
       this.currentWorkflowName = workflowName;
-      
-      // Convert flowchart to YAML format with the provided name
-      const flowchartData = this.convertWorkflowToYaml(workflowName);
-      
+
+      // Convert flowchart to JSON format with the provided name
+      const flowchartData = this.convertWorkflowToJson(workflowName);
+
       // Log the nodes before conversion
-      console.log('Nodes before YAML conversion:', JSON.stringify(this.nodes, null, 2));
-      console.log('YAML data being sent to API:', flowchartData);
+      console.log('Nodes before JSON conversion:', JSON.stringify(this.nodes, null, 2));
+      console.log('JSON data being sent to API:', flowchartData);
 
       // Generate a workflow ID from the name
       this.currentWorkflowId = workflowName.replace(/\s+/g, '_');
-      
-      // Create a Blob with the YAML content
-      const blob = new Blob([flowchartData], { type: 'text/yaml' });
-      
+
+      // Create a Blob with the JSON content
+      const blob = new Blob([flowchartData], { type: 'application/json' });
+
       // Create a FormData object to send the file to the server
       const formData = new FormData();
-      formData.append('file', blob, 'workflow.yaml');
-      
+      formData.append('file', blob, 'workflow.json');
+
       // Send the file to the server
       axios.post('http://localhost:8000/workflows', formData)
         .then(response => {
@@ -337,10 +316,10 @@ const firstNode = this.nodes.find(node => node.type === 'act')
           alert(`Error publishing flowchart: ${error.message}`);
         });
     },
-    
-    convertWorkflowToYaml(workflowName) {
+
+    convertWorkflowToJson(workflowName) {
       // Create a structured object for the workflow
-      const workflow= {
+      const workflow = {
         // Add metadata section
         metadata: {
           name: workflowName || 'Untitled Workflow', // Use provided name or default
@@ -356,12 +335,12 @@ const firstNode = this.nodes.find(node => node.type === 'act')
             },
             content: node.content
           };
-          
+
           // Add prompt for action and choice nodes
           if (node.type === 'act' || node.type === 'choice') {
             cleanNode.prompt = node.prompt || '';
           }
-          
+
           return cleanNode;
         }),
         connections: this.connections.map(conn => {
@@ -378,68 +357,22 @@ const firstNode = this.nodes.find(node => node.type === 'act')
           };
         })
       };
-      
-      // Convert to YAML format
-      return this.convertToYaml(workflow);
+
+      // Convert to JSON string
+      return JSON.stringify(workflow, null, 2);
     },
-    
-    convertToYaml(obj, indent = 0) {
-      let yaml = '';
-      const indentStr = ' '.repeat(indent);
-      
-      if (Array.isArray(obj)) {
-        // Handle arrays
-        for (const item of obj) {
-          yaml += `${indentStr}- ${typeof item === 'object' ? '\n' + this.convertToYaml(item, indent + 2) : item}\n`;
-        }
-      } else if (typeof obj === 'object' && obj !== null) {
-        // Handle objects
-        for (const [key, value] of Object.entries(obj)) {
-          // Don't skip null values for the prompt field
-          if ((key !== 'prompt' && (value === null || value === undefined))) {
-            // Skip null or undefined values except for prompt
-            continue;
-          } else if (key === 'prompt' && (value === null || value === undefined)) {
-            // For prompt field, convert null/undefined to empty string
-            yaml += `${indentStr}${key}: ''\n`;
-          } else if (typeof value === 'object') {
-            yaml += `${indentStr}${key}:\n${this.convertToYaml(value, indent + 2)}`;
-          } else if (typeof value === 'string' && value.includes('\n')) {
-            // Handle multiline strings (like prompts)
-            yaml += `${indentStr}${key}: |\n`;
-            const lines = value.split('\n');
-            for (const line of lines) {
-              yaml += `${indentStr}  ${line}\n`;
-            }
-          } else {
-            yaml += `${indentStr}${key}: ${value}\n`;
-          }
-        }
-      }
-      
-      return yaml;
-    },
-    
-    downloadYamlFile(yamlContent) {
-      const downloadLink = document.createElement('a');
-      downloadLink.href = URL.createObjectURL(new Blob([yamlContent], { type: 'text/yaml' }));
-      downloadLink.download = 'workflow.yaml';
-      downloadLink.click();
-    },
-    
+
     loadWorkflow(workflowData) {
-      console.log('Loading workflow:', workflowData);
-      
       // Generate workflow ID from metadata name or use the ID directly
       const workflowId = workflowData.id || (workflowData.metadata?.name ? workflowData.metadata.name.replace(/\s+/g, '_') : null);
       // Reset the current workflow
       this.createNewWorkflow();
-      
+
       // Store the workflow name after resetting
       if (workflowData.metadata?.name) {
         this.currentWorkflowName = workflowData.metadata.name;
       }
-      
+
       // Preserve metadata if it exists
       if (workflowData.metadata) {
         // We don't need to do anything with the metadata here
@@ -448,12 +381,12 @@ const firstNode = this.nodes.find(node => node.type === 'act')
 
       // Store the workflow ID
       this.currentWorkflowId = workflowId;
-      
+
       // Load the nodes from the workflow data
       if (workflowData.nodes && Array.isArray(workflowData.nodes)) {
         // Find the highest node ID to set nextNodeId correctly
         let highestId = 0;
-        
+
         workflowData.nodes.forEach(node => {
           // Extract the numeric part of the node ID
           const idMatch = node.id.match(/node-(\d+)/);
@@ -461,7 +394,7 @@ const firstNode = this.nodes.find(node => node.type === 'act')
             const idNum = parseInt(idMatch[1], 10);
             highestId = Math.max(highestId, idNum);
           }
-          
+
           // Add the node to the canvas
           this.nodes.push({
             id: node.id,
@@ -472,10 +405,10 @@ const firstNode = this.nodes.find(node => node.type === 'act')
             prompt: node.prompt || null
           });
         });
-        
+
         // Set the next node ID
         this.nextNodeId = highestId + 1;
-        
+
         // Update the last node position
         if (workflowData.nodes.length > 0) {
           const lastNode = workflowData.nodes[workflowData.nodes.length - 1];
@@ -485,29 +418,28 @@ const firstNode = this.nodes.find(node => node.type === 'act')
           };
         }
       }
-      
+
       // Add a longer delay to ensure DOM is fully rendered
       setTimeout(() => {
         console.log('Creating connections after delay');
-        
+
         // Load the connections from the workflow data
         if (workflowData.connections && Array.isArray(workflowData.connections)) {
-          console.log('Connections to create:', workflowData.connections);
-          
+
           workflowData.connections.forEach(conn => {
             // Get the connection details
             const fromNodeId = conn.from.nodeId;
             let fromPosition = conn.from.position;
             const toNodeId = conn.to.nodeId;
             const toPosition = conn.to.position;
-            
+
             // Fix for yes/no vs true/false mismatch
             // Convert true/false to yes/no
             if (fromPosition === 'true' || fromPosition === true) fromPosition = 'yes';
             if (fromPosition === 'false' || fromPosition === false) fromPosition = 'no';
-            
+
             console.log(`Creating connection from ${fromNodeId} (${fromPosition}) to ${toNodeId} (${toPosition})`);
-            
+
             this.createConnection(
               fromNodeId,
               fromPosition,
@@ -515,7 +447,7 @@ const firstNode = this.nodes.find(node => node.type === 'act')
               toPosition
             );
           });
-          
+
           // Force a redraw of all connections
           this.$nextTick(() => {
             const canvas = this.$refs.canvas;
@@ -524,7 +456,7 @@ const firstNode = this.nodes.find(node => node.type === 'act')
             }
           });
         }
-        
+
       }, 1000); // Increase delay to 1000ms
 
       // Fetch execution data for the loaded workflow
@@ -532,15 +464,14 @@ const firstNode = this.nodes.find(node => node.type === 'act')
         this.fetchWorkflowExecutionData(workflowId);
       }
     },
-    
+
     async fetchWorkflowExecutionData(filename) {
       try {
         console.log(`Fetching execution data for ${filename}...`);
         const response = await axios.get(`http://localhost:8000/workflows/${filename}/logs/latest`);
-        console.log(`Response for ${filename}:`, response.data);
         if (response.data.found) {
           this.currentWorkflowExecution = response.data.log;
-          console.log(`Added execution data:`, this.currentWorkflowExecution);
+          console.log(`Added execution data`);
         } else {
           this.currentWorkflowExecution = null;
         }
@@ -556,17 +487,17 @@ const firstNode = this.nodes.find(node => node.type === 'act')
 
     formatExecutionResult(result) {
       if (!result) return 'No result available';
-      
+
       // If result is a string that looks like JSON, try to parse it
       if (typeof result === 'string') {
         try {
           const parsed = JSON.parse(result);
-          
+
           // If it has a response_text field, return that
           if (parsed.response_text) {
             return marked.parse(parsed.response_text);
           }
-          
+
           return marked.parse(JSON.stringify(parsed, null, 2));
         } catch (e) {
           return marked.parse(result);
@@ -582,12 +513,14 @@ const firstNode = this.nodes.find(node => node.type === 'act')
 @import '../../../ui/styles.css';
 
 .canvas-container.with-execution-pane {
-  margin-right: 300px; /* Make space for the execution pane */
+  margin-right: 300px;
+  /* Make space for the execution pane */
 }
 
 .workflow-execution-pane {
   position: fixed;
-  top: 60px; /* Below the toolbar */
+  top: 60px;
+  /* Below the toolbar */
   right: 0;
   width: 300px;
   bottom: 0;
@@ -623,6 +556,7 @@ const firstNode = this.nodes.find(node => node.type === 'act')
 
 .execution-result {
   padding-left: 2px;
-  padding-right: 2px;;
+  padding-right: 2px;
+  ;
 }
 </style>

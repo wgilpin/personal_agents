@@ -12,12 +12,67 @@ import pytest
 from fastapi.testclient import TestClient
 from tinydb import TinyDB, Query
 
+import shutil
 from api_server import api
 from db import Database
 from workflows import extract_workflow_metadata
 
 # Create a test client
 client = TestClient(api)
+
+
+@pytest.fixture
+def mock_logs():
+    """Create mock log files for testing"""
+    # Create a logs directory if it doesn't exist
+    logs_dir = os.path.join(os.path.dirname(__file__), "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+
+    # Create some mock log files
+    log_files = [
+        (
+            "test_workflow_2024-01-01_12-00-00.json",
+            {
+                "workflow_name": "Test Workflow",
+                "start_time": "2024-01-01T12:00:00",
+                "end_time": "2024-01-01T12:00:10",
+                "duration_seconds": 10,
+                "success": True,
+                "result": "Result 1",
+            },
+        ),
+        (
+            "test_workflow_2024-01-01_13-00-00.json",
+            {
+                "workflow_name": "Test Workflow",
+                "start_time": "2024-01-01T13:00:00",
+                "end_time": "2024-01-01T13:00:20",
+                "duration_seconds": 20,
+                "success": True,
+                "result": "Result 2",
+            },
+        ),
+        (
+            "another_workflow_2024-01-01_14-00-00.json",
+            {
+                "workflow_name": "Another Workflow",
+                "start_time": "2024-01-01T14:00:00",
+                "end_time": "2024-01-01T14:00:30",
+                "duration_seconds": 30,
+                "success": True,
+                "result": "Result 3",
+            },
+        ),
+    ]
+    for filename, content in log_files:
+        filepath = os.path.join(logs_dir, filename)
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(content, f)  # Write as JSON
+
+    yield  # This allows the tests to run
+
+    # Clean up the logs directory after the tests
+    shutil.rmtree(logs_dir)
 
 
 @pytest.fixture
@@ -288,6 +343,39 @@ def test_list_workflows_with_custom_names(mock_workflow_with_metadata):
     assert test_workflow["default_name"] == "test_workflow_with_metadata"
 
 
+def test_get_workflow(mock_workflow, mock_workflow_id):  # pylint: disable=unused-argument
+    """Test getting a specific workflow by filename"""
+    # Send a request to get the workflow
+    response = client.get(f"/workflows/{mock_workflow_id}")
+
+    # Check the response
+    assert response.status_code == 200
+    workflow_data = response.json()
+
+    # Verify the workflow data
+    assert workflow_data["id"] == mock_workflow_id
+    assert "metadata" in workflow_data
+    assert workflow_data["metadata"]["name"] == "Test Workflow"
+    assert "nodes" in workflow_data
+    assert len(workflow_data["nodes"]) == 2
+    assert workflow_data["nodes"][0]["id"] == "node1"
+    assert workflow_data["nodes"][1]["id"] == "node2"
+    assert "connections" in workflow_data
+    assert len(workflow_data["connections"]) == 1
+    assert workflow_data["connections"][0]["from"]["nodeId"] == "node1"
+    assert workflow_data["connections"][0]["to"]["nodeId"] == "node2"
+
+
+def test_get_workflow_not_found():
+    """Test getting a non-existent workflow"""
+    # Send a request to get a non-existent workflow
+    response = client.get("/workflows/non_existent_workflow")
+
+    # Check the response
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"]
+
+
 def test_update_workflow_name(mock_workflow, mock_workflow_id):  # pylint: disable=unused-argument
     """Test updating a workflow name"""
     # Define the new name
@@ -320,5 +408,100 @@ def test_update_workflow_name(mock_workflow, mock_workflow_id):  # pylint: disab
     assert test_workflow["name"] == new_name
 
 
+@pytest.mark.asyncio
+async def test_upload_workflow():
+    """Test uploading a workflow"""
+    # Create a test workflow file in JSON format
+    test_workflow_content = {
+        "metadata": {"name": "Uploaded Test Workflow"},
+        "nodes": [{"id": "node1", "type": "act", "prompt": "Uploaded workflow action"}],
+        "connections": [],
+    }
+    test_workflow_file_content = json.dumps(test_workflow_content, indent=2)
+
+    # Create a temporary file with .json extension
+    temp_file_path = os.path.join(os.path.dirname(__file__), "temp_workflow.json")
+    with open(temp_file_path, "w", encoding="utf-8") as temp_file:
+        temp_file.write(test_workflow_file_content)
+
+    try:
+        # Send a request to the endpoint with correct MIME type
+        with open(temp_file_path, "rb") as temp_file:
+            response = client.post("/workflows", files={"file": ("workflow.json", temp_file, "application/json")})
+
+        # Check the response
+        assert response.status_code == 200, f"Response: {response.text}"
+        response_data = response.json()
+        assert "message" in response_data, f"Response: {response.text}"
+        assert response_data["success"] is True, f"Response: {response.text}"
+
+        # Verify that workflow was saved to TinyDB and get workflow ID
+        tinydb = Database()
+        # The workflow ID is derived from the name with spaces replaced by underscores
+        workflow_id = "Uploaded_Test_Workflow"
+        workflow_data = tinydb.workflows_table.get(tinydb.workflow_query.id == workflow_id)
+        assert workflow_data is not None, f"Workflow with ID '{workflow_id}' not found in database"
+        assert workflow_data["metadata"]["name"] == "Uploaded Test Workflow"
+    except Exception:
+        # Clean up the database if the test fails
+        tinydb = Database()
+        # Use the expected workflow ID
+        workflow_id = "Uploaded_Test_Workflow"
+        tinydb.workflows_table.remove(tinydb.workflow_query.id == workflow_id)
+        raise
+    finally:
+        # Clean up the temporary file
+        os.remove(temp_file_path)
+
+
 if __name__ == "__main__":
     pytest.main(["-xvs", "test_api_server.py"])
+
+
+def test_delete_workflow(mock_workflow, mock_workflow_id):  # pylint: disable=unused-argument
+    """Test deleting a workflow"""
+    # Send a request to delete the workflow
+    response = client.delete(f"/workflows/{mock_workflow_id}")
+
+    # Check the response
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+
+    # Verify that the workflow is deleted from TinyDB
+    tinydb = Database()
+    workflow_data = tinydb.workflows_table.get(tinydb.workflow_query.id == mock_workflow_id)
+    assert workflow_data is None
+
+
+def test_delete_workflow_not_found():
+    """Test deleting a non-existent workflow"""
+    # Send a request to delete a non-existent workflow
+    response = client.delete("/workflows/non_existent_workflow")
+
+    # Check the response
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"]
+
+
+def test_get_latest_workflow_log_success(mock_workflow, mock_logs):  # pylint: disable=unused-argument
+    """Test getting the latest log for a workflow that exists and has logs"""
+    response = client.get(f"/workflows/test_workflow/logs/latest")
+    assert response.status_code == 200
+    assert response.json()["found"] is True
+    assert response.json()["log"]["workflow_name"] == "Test Workflow"
+    assert response.json()["log"]["result"] == "Result 2"  # Expecting the latest log
+
+
+def test_get_latest_workflow_log_no_logs(mock_workflow):  # pylint: disable=unused-argument
+    """Test getting the latest log for a workflow that exists but has no logs"""
+    response = client.get(f"/workflows/test_workflow/logs/latest")
+    assert response.status_code == 200  # Expecting 200 even if no logs
+    assert response.json()["found"] is False
+    assert "No execution logs found" in response.json()["message"]
+
+
+def test_get_latest_workflow_log_not_found():
+    """Test getting the latest log for a workflow that doesn't exist"""
+    response = client.get(f"/workflows/non_existent_workflow/logs/latest")
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"]

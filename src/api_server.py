@@ -77,35 +77,6 @@ class WorkflowExecuteResponse(BaseModel):
     error: Optional[str] = Field(default=None, description="Error message if execution failed")
 
 
-@api.post("/execute", response_model=ApiResponse)
-async def execute_prompt(prompt_input: PromptInput) -> Dict[str, Any]:
-    """
-    Execute a prompt using the plan_and_execute workflow.
-
-    Args:
-        prompt_input: The input prompt.
-
-    Returns:
-        A dictionary containing the execution result.
-    """
-    try:
-        # Create a plan_and_execute agent
-        agent = PlanAndExecuteAgent()
-
-        # Execute the agent with the input
-        result = await agent.run(prompt_input.input)
-
-        # Extract the final result
-        final_result = result.get("final_result", "No result")
-
-        return {"result": final_result}
-    except Exception as e:
-        # Handle all other exceptions
-        error_message = f"An error occurred: {str(e)}"
-        print(f"\n\n{error_message}")
-        return {"result": "", "error": error_message}
-
-
 class WorkflowResponse(BaseModel):
     """Response model for the workflow endpoint."""
 
@@ -119,17 +90,17 @@ async def upload_workflow(file: UploadFile = File(...)) -> Dict[str, Any]:
     Upload a workflow to be used by the AI server.
 
     Args:
-        file: The YAML file containing the workflow data.
+        file: The JSON file containing the workflow data.
 
     Returns:
         A dictionary indicating success or failure.
     """
     try:
-        # Check if the file is a YAML file
-        if not file.filename.endswith((".yaml", ".yml")):
+        # Check if the file is a JSON file
+        if not file.filename.endswith(".json"):
             return JSONResponse(
                 status_code=400,
-                content={"success": False, "message": "File must be a YAML file"},
+                content={"success": False, "message": "File must be a JSON file"},
             )
 
         # Read the file content
@@ -434,18 +405,17 @@ async def get_latest_workflow_log(filename: str) -> Dict[str, Any]:
     Returns:
         The latest log data for the workflow.
     """
+    # Load the workflow from the database
+    workflow_id = filename
+    workflow_data = await load_workflow(workflow_id)
+
+    if not workflow_data:
+        raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
+
     try:
-        # Get the workflow file path to extract the workflow name
-        workflow_id = filename
-
-        # Load the workflow from the database
-        workflow_data = await load_workflow(workflow_id)
-        if not workflow_data:
-            raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
-
         workflow_name = workflow_data.get("metadata", {}).get("name", workflow_id)
 
-        logs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+        logs_dir = os.path.join(os.path.dirname(__file__), "logs")
 
         # Get all log files
         all_log_files = list_log_files(logs_dir)
