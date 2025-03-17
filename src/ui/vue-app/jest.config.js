@@ -13,5 +13,13 @@ module.exports = {
     '**/tests/unit/**/*.spec.[jt]s?(x)',
     '**/__tests__/*.[jt]s?(x)'
   ],
-  transformIgnorePatterns: ['/node_modules/']
+  transformIgnorePatterns: ['/node_modules/'],
+  collectCoverage: true,
+  coverageDirectory: '<rootDir>/coverage',
+  collectCoverageFrom: [
+    'src/**/*.{js,vue}',
+    '!src/main.js',
+    '!**/node_modules/**'
+  ],
+  coverageReporters: ['text', 'html', 'lcov']
 }

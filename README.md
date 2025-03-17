@@ -134,6 +134,70 @@ The Vue.js application is organized into the following components:
 
 For development purposes, the Vue.js application proxies API requests to the backend server to avoid CORS issues. Make sure both servers are running during development.
 
+### Running Tests
+
+The project includes comprehensive test coverage for both backend and frontend components.
+
+#### Backend Tests
+
+To run the backend tests:
+
+```bash
+python src/run_tests.py
+```
+
+#### Test Coverage
+
+To generate backend test coverage reports:
+
+```bash
+python src/run_coverage.py
+```
+
+This will:
+- Run all backend tests with coverage analysis
+- Generate a terminal report showing coverage percentages
+- Create an HTML report in the `htmlcov` directory
+- Create an XML report at `coverage.xml`
+
+The coverage report shows which parts of your code are covered by tests and helps identify areas that need additional testing.
+
+Current coverage metrics:
+- api_server.py: 65%
+- plan_and_execute.py: 47%
+- view_workflow_logs.py: 8%
+- workflow_logger.py: 100%
+- Overall: 45%
+
+#### Frontend Tests
+
+To run the frontend tests:
+
+```bash
+cd src/ui/vue-app
+npm run test:unit
+```
+
+To run frontend tests with coverage:
+
+```bash
+cd src/ui/vue-app
+npm run test:coverage
+```
+
+#### Combined Coverage Reports
+
+To run both backend and frontend tests with coverage and open the reports:
+
+```bash
+python src/run_all_coverage.py
+```
+
+This script will:
+1. Run backend tests with coverage
+2. Run frontend tests with coverage
+3. Open both HTML coverage reports in your default browser
+
 ## References
 
 - [Plan-and-Solve Prompting Paper](https://arxiv.org/pdf/2305.04091)

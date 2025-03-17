@@ -18,3 +18,10 @@ graph.png
 /logs
 src/ui/vue-app/package-lock.json
 /src/db
+
+# Coverage files
+.coverage
+coverage.xml
+/htmlcov/
+/src/coverage.xml
+/src/ui/vue-app/coverage/

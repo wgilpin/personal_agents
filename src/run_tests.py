@@ -5,6 +5,13 @@ import sys
 import subprocess
 import pytest  # pylint: disable=import-error
 
+try:
+    import pytest_cov  # pylint: disable=unused-import
+except ImportError:
+    print("pytest-cov not installed. Installing...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "pytest-cov"])
+    import pytest_cov  # pylint: disable=unused-import
+
 
 def run_frontend_tests():
     """Run frontend tests"""
@@ -18,9 +25,11 @@ def main():
     """Run all tests"""
     # Get the directory of this script
     script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
 
-    # Add the script directory to the Python path
+    # Add both the script directory and project root to the Python path
     sys.path.insert(0, script_dir)
+    sys.path.insert(0, project_root)
 
     # Run the backend tests
     test_files = [
@@ -30,7 +39,10 @@ def main():
     ]
 
     print("Running backend tests for the Plan and Execute agent...")
-    backend_result = pytest.main(["-xvs"] + test_files)
+    # Add coverage options to pytest
+    backend_result = pytest.main(
+        ["-xvs", "--cov=src", "--cov-config=.coveragerc", "--cov-report=term", "--cov-report=html"] + test_files
+    )
 
     # Run the frontend tests
     frontend_result = 0

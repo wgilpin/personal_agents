@@ -20,6 +20,7 @@ dependencies = [
   "fastapi>=0.115.8",
   "uvicorn>=0.34.0",
   "tinydb>=4.8.2",
+  "pytest-cov>=6.0.0",
 ]
 
 [tool.setuptools]
@@ -42,3 +43,6 @@ exclude = '''
   | dist
 )/
 '''
+
+[dependency-groups]
+dev = ["pytest-cov>=6.0.0"]
