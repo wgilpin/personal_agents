@@ -2,12 +2,10 @@
 # -*- coding: utf-8 -*-
 """Workflow handling logic for the API server."""
 
-import os
 import json
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
-
-from tinydb import TinyDB, Query
+from db import Database
 
 
 def delete_workflow(filename: str) -> Dict[str, Any]:
@@ -22,21 +20,19 @@ def delete_workflow(filename: str) -> Dict[str, Any]:
     """
     try:
         # Initialize the database
-        db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
-        db = TinyDB(db_path)
-        workflows_table = db.table("workflows")
-        Workflow = Query()
+
+        tinydb = Database()
 
         # Extract workflow ID from filename if it's a filename
         workflow_id = filename
 
         # Check if the workflow exists
-        workflow = workflows_table.get(Workflow.id == workflow_id)
+        workflow = tinydb.workflows_table.get(tinydb.workflow_query.id == workflow_id)
         if not workflow:
             return {"success": False, "message": f"Workflow '{workflow_id}' not found"}
 
         # Delete the workflow
-        workflows_table.remove(Workflow.id == workflow_id)
+        tinydb.workflows_table.remove(tinydb.workflow_query.id == workflow_id)
 
         return {"success": True, "message": f"Workflow '{workflow_id}' deleted successfully"}
 
@@ -56,13 +52,10 @@ async def load_flowchart(workflow_id: str) -> Optional[Dict[str, Any]]:
     """
     try:
         # Initialize the database
-        db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
-        db = TinyDB(db_path)
-        workflows_table = db.table("workflows")
-        Workflow = Query()
+        tinydb = Database()
 
         # Get the workflow from database
-        return workflows_table.get(Workflow.id == workflow_id)
+        return tinydb.db.table("workflows").get(tinydb.workflow_query.id == workflow_id)
     except Exception:
         return None
 
@@ -80,11 +73,8 @@ def save_workflow(content: bytes, workflow_id: str = None) -> Tuple[bool, str, s
     """
     try:
         # Initialize the database
-        db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        db = TinyDB(db_path)
-        workflows_table = db.table("workflows")
-        current_workflow_table = db.table("current_workflow")
+        tinydb = Database()
+        current_workflow_table = tinydb.db.table("current_workflow")
 
         # Parse the content to validate it
         try:
@@ -115,23 +105,20 @@ def save_workflow(content: bytes, workflow_id: str = None) -> Tuple[bool, str, s
         # Create a safe ID from the flowchart name if not provided
         if not workflow_id:
             workflow_id = "".join(c if c.isalnum() else "_" for c in flowchart_name)
-        else:
-            workflow_id = workflow_id
 
         # Add timestamp and ID to the workflow data
         flowchart_data["id"] = workflow_id
         flowchart_data["updated_at"] = datetime.now().isoformat()
 
         # Check if the workflow already exists
-        Workflow = Query()
-        existing = workflows_table.get(Workflow.id == workflow_id)
+        existing = tinydb.workflows_table.get(tinydb.workflow_query.id == workflow_id)
         if existing:
             # Update the existing workflow
-            workflows_table.update(flowchart_data, Workflow.id == workflow_id)
+            tinydb.workflows_table.update(flowchart_data, tinydb.workflow_query.id == workflow_id)
         else:
             # Insert a new workflow
             flowchart_data["created_at"] = datetime.now().isoformat()
-            workflows_table.insert(flowchart_data)
+            tinydb.workflows_table.insert(flowchart_data)
 
         # Also save as current workflow
         current_workflow_table.truncate()  # Clear the current workflow table
@@ -161,13 +148,9 @@ def extract_workflow_metadata(workflow_id: str) -> dict:
 
     try:
         # Initialize the database
-        db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
-        db = TinyDB(db_path)
-        workflows_table = db.table("workflows")
-        Workflow = Query()
-
+        tinydb = Database()
         # Try to get workflow from database
-        content = workflows_table.get(Workflow.id == workflow_id)
+        content = tinydb.workflows_table.get(tinydb.workflow_query.id == workflow_id)
 
         if content:
             # Check if metadata section exists
@@ -202,14 +185,9 @@ def update_workflow_name(workflow_id: str, new_name: str) -> Dict[str, Any]:
     """
     try:
         # Initialize the database
-        db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
-        db = TinyDB(db_path)
-        workflows_table = db.table("workflows")
-        current_workflow_table = db.table("current_workflow")
-        Workflow = Query()
-
+        tinydb = Database()
         # Get the workflow from database
-        workflow = workflows_table.get(Workflow.id == workflow_id)
+        workflow = tinydb.workflows_table.get(tinydb.workflow_query.id == workflow_id)
         if not workflow:
             return {"success": False, "message": f"Workflow '{workflow_id}' not found"}
 
@@ -221,12 +199,13 @@ def update_workflow_name(workflow_id: str, new_name: str) -> Dict[str, Any]:
         workflow["updated_at"] = datetime.now().isoformat()
 
         # Update the workflow in the database
-        workflows_table.update(workflow, Workflow.id == workflow_id)
+        tinydb.workflows_table.update(workflow, tinydb.workflow_query.id == workflow_id)
 
         # If this is the current workflow, update it too
+        current_workflow_table = tinydb.db.table("current_workflow")
         current = current_workflow_table.all()
         if current and current[0].get("id") == workflow_id:
-            current_workflow_table.update(workflow, Workflow.id == workflow_id)
+            current_workflow_table.update(workflow, tinydb.workflow_query.id == workflow_id)
 
         return {"success": True, "message": "Workflow name updated successfully"}
 
@@ -243,12 +222,10 @@ async def list_workflows() -> List[Dict[str, Any]]:
     """
     try:
         # Initialize the database
-        db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
-        db = TinyDB(db_path)
-        workflows_table = db.table("workflows")
+        tinydb = Database()
 
         # Get all workflows from the database
-        all_workflows = workflows_table.all()
+        all_workflows = tinydb.workflows_table.all()
 
         # Format the workflow information
         workflows = []
@@ -290,9 +267,8 @@ async def load_current_workflow() -> Optional[Dict[str, Any]]:
     """
     try:
         # Initialize the database
-        db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
-        db = TinyDB(db_path)
-        current_workflow_table = db.table("current_workflow")
+        tinydb = Database()
+        current_workflow_table = tinydb.db.table("current_workflow")
 
         current = current_workflow_table.all()
         if current:

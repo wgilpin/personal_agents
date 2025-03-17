@@ -10,7 +10,7 @@ def run_frontend_tests():
     """Run frontend tests"""
     print("\nRunning frontend tests...")
     vue_app_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui", "vue-app")
-    result = subprocess.run("npm run test:unit", cwd=vue_app_dir, shell=True)
+    result = subprocess.run("npm run test:unit", cwd=vue_app_dir, shell=True, check=False)
     return result.returncode
 
 

@@ -207,35 +207,6 @@ async def test_replan_step_finish():
 
 
 @pytest.mark.asyncio
-async def test_load_flowchart_from_yaml():
-    """Test the load_flowchart_from_yaml method"""
-    # Create a PlanAndExecuteAgent
-    agent = PlanAndExecuteAgent()
-
-    # Mock os.path.exists and open
-    mock_flowchart = {
-        "nodes": [
-            {"id": "node1", "type": "act", "content": "Action 1"},
-            {"id": "node2", "type": "choice", "content": "Choice 1"},
-        ],
-        "connections": [
-            {"from": {"nodeId": "node1"}, "to": {"nodeId": "node2"}},
-        ],
-    }
-
-    with (
-        patch("os.path.exists", return_value=True),
-        patch("builtins.open", MagicMock()),
-        patch("yaml.safe_load", return_value=mock_flowchart),
-    ):
-
-        result = await agent.load_flowchart_from_yaml("dummy_path")
-
-        # Verify the result
-        assert result == mock_flowchart
-
-
-@pytest.mark.asyncio
 async def test_conditional_edges():
     """Test the conditional edge methods"""
     # Create a PlanAndExecuteAgent

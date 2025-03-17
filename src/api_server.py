@@ -116,7 +116,7 @@ class FlowchartResponse(BaseModel):
 @api.post("/flowchart", response_model=FlowchartResponse)
 async def upload_flowchart(file: UploadFile = File(...)) -> Dict[str, Any]:
     """
-    Upload a flowchartto be used by the AI server.
+    Upload a flowchart to be used by the AI server.
 
     Args:
         file: The YAML file containing the flowchart data.
@@ -507,8 +507,8 @@ async def delete_workflow_endpoint(filename: str) -> Dict[str, Any]:
         A dictionary indicating success or failure.
     """
     try:
-        # Prevent deletion of current_flowchart.yaml
-        if filename == "current_flowchart.yaml":
+        # Prevent deletion of current_flowchart
+        if filename == "current_flowchart":
             raise HTTPException(status_code=400, detail="Cannot delete the current flowchart")
 
         # Use the workflow module to delete the workflow

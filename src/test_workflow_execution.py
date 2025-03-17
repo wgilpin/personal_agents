@@ -1,16 +1,18 @@
 """Tests for workflow execution with multiple nodes"""
 
+# pylint: disable=redefined-outer-name
+
 import json
 import os
-import yaml
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 from tinydb import TinyDB, Query
 
-from api_server import api, WorkflowExecuteRequest
+from api_server import api
+from db import Database
 
 
 # Create a test client
@@ -21,11 +23,7 @@ client = TestClient(api)
 def mock_multi_node_workflow():
     """Create a mock workflow file with multiple connected nodes for testing"""
     # Initialize the database
-    db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    db = TinyDB(db_path)
-    workflows_table = db.table("workflows")
-    Workflow = Query()
+    tinydb = Database()
 
     # Create a test workflow with multiple nodes and connections
     test_workflow = {
@@ -48,29 +46,21 @@ def mock_multi_node_workflow():
     }
 
     # Save to TinyDB
-    workflows_table.upsert(test_workflow, Workflow.id == "test_multi_node_workflow")
+    q = Query()
+    tinydb.db.table("workflows").upsert(test_workflow, q.id == "test_multi_node_workflow")
 
     yield "test_multi_node_workflow"
 
     # Clean up the database after the test
-    workflows_table.remove(Workflow.id == "test_multi_node_workflow")
-
-    # Also clean up any file that might have been created for backward compatibility
-    workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
-    test_workflow_path = os.path.join(workflows_dir, "test_multi_node_workflow.yaml")
-    if os.path.exists(test_workflow_path):
-        os.remove(test_workflow_path)
+    tinydb.workflows_table.remove(tinydb.workflow_query.id == "test_multi_node_workflow")
 
 
 @pytest.fixture
 def mock_multi_node_flowchart():
     """Create a mock current flowchart file with multiple connected nodes for testing"""
     # Initialize the database
-    db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    db = TinyDB(db_path)
-    current_workflow_table = db.table("current_workflow")
-    workflows_table = db.table("workflows")
+    tinydb = Database()
+    current_workflow_table = tinydb.db.table("current_workflow")
 
     # Create a test flowchart with multiple nodes and connections
     test_flowchart = {
@@ -97,14 +87,13 @@ def mock_multi_node_flowchart():
     current_workflow_table.insert(test_flowchart)
 
     # Also save to workflows table
-    Workflow = Query()
-    workflows_table.upsert(test_flowchart, Workflow.id == "current_flowchart")
+    tinydb.workflows_table.upsert(test_flowchart, tinydb.workflow_query.id == "current_flowchart")
 
     yield
 
     # Clean up the database after the test
     current_workflow_table.truncate()
-    workflows_table.remove(Workflow.id == "current_flowchart")
+    tinydb.workflows_table.remove(tinydb.workflow_query.id == "current_flowchart")
 
 
 @pytest.mark.asyncio
@@ -176,7 +165,9 @@ async def test_execute_workflow_traverses_nodes(mock_agent_class, mock_multi_nod
 
 @pytest.mark.asyncio
 @patch("api_server.PlanAndExecuteAgent")
-async def test_execute_current_flowchart_traverses_nodes(mock_agent_class, mock_multi_node_flowchart):
+async def test_execute_current_flowchart_traverses_nodes(
+    mock_agent_class, mock_multi_node_flowchart
+):  # pylint: disable=unused-argument
     """Test that execute_current_flowchart traverses all nodes in the flowchart"""
     # Create a mock agent instance with different responses for each call
     mock_agent = MagicMock()
@@ -268,13 +259,6 @@ async def test_workflow_with_no_connections(mock_agent_class):
     # Save to TinyDB
     workflows_table.upsert(test_workflow, Workflow.id == "test_no_connections")
 
-    # For backward compatibility, also save to file
-    workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
-    os.makedirs(workflows_dir, exist_ok=True)
-    test_workflow_path = os.path.join(workflows_dir, "test_no_connections.yaml")
-    with open(test_workflow_path, "wb") as f:
-        f.write(yaml.dump(test_workflow).encode("utf-8"))
-
     try:
         # Create a mock agent instance
         mock_agent = MagicMock()
@@ -305,8 +289,6 @@ async def test_workflow_with_no_connections(mock_agent_class):
 
     finally:
         # Clean up after the test
-        if os.path.exists(test_workflow_path):
-            os.remove(test_workflow_path)
         workflows_table.remove(Workflow.id == "test_no_connections")
 
 

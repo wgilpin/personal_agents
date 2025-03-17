@@ -1,5 +1,7 @@
 """Tests for the API server"""
 
+# pylint: disable=redefined-outer-name
+
 import json
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
