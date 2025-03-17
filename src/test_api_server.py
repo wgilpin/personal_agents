@@ -4,6 +4,7 @@
 
 import json
 import os
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
 
@@ -12,6 +13,7 @@ from fastapi.testclient import TestClient
 from tinydb import TinyDB, Query
 
 from api_server import api
+from db import Database
 from workflows import extract_workflow_metadata
 
 # Create a test client
@@ -184,19 +186,18 @@ async def test_execute_workflow_agent_error(mock_agent_class, mock_workflow_id):
 
 @pytest.mark.asyncio
 @patch("api_server.PlanAndExecuteAgent")
-async def test_execute_current_flowchart_traverses_nodes(mock_agent_class):
-    """Test that execute_current_flowchart traverses nodes in the flowchart"""
-    # Initialize the database for the test flowchart
-    # Initialize the database
-    db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    db = TinyDB(db_path)
-    workflows_table = db.table("workflows")
+async def test_execute_current_workflow_traverses_nodes(mock_agent_class):
+    """Test that execute_current_workflow traverses nodes in the workflow"""
+    # Initialize the database for the test workflow
+    tinydb = Database()
 
-    # Create a test flowchart with multiple nodes and connections
-    test_flowchart = {
-        "metadata": {"name": "Multi-Node Test Flowchart"},
-        "id": "current_flowchart",
+    # create a random ID for a workflow
+    test_workflow_id = "test_workflow_" + uuid.uuid4().hex
+
+    # Create a test workflow with multiple nodes and connections
+    test_workflow = {
+        "metadata": {"name": "Multi-Node Test workflow"},
+        "id": test_workflow_id,
         "created_at": datetime.now().isoformat(),
         "updated_at": datetime.now().isoformat(),
         "nodes": [
@@ -209,8 +210,7 @@ async def test_execute_current_flowchart_traverses_nodes(mock_agent_class):
     }
 
     # Save to workflows table
-    Workflow = Query()
-    workflows_table.upsert(test_flowchart, Workflow.id == "current_flowchart")
+    tinydb.workflows_table.upsert(test_workflow, tinydb.workflow_query.id == test_workflow_id)
 
     try:
         # Create a mock agent instance with different responses for each call
@@ -241,7 +241,7 @@ async def test_execute_current_flowchart_traverses_nodes(mock_agent_class):
         request_data = {"input": "Test input"}
 
         # Send a request to the endpoint
-        response = client.post("/workflows/current_flowchart/execute", json=request_data)
+        response = client.post(f"/workflows/{test_workflow_id}/execute", json=request_data)
         assert response.status_code == 200, f"Response: {response.json()}"
 
         # The final_result is a JSON string with a response_text field
@@ -256,7 +256,7 @@ async def test_execute_current_flowchart_traverses_nodes(mock_agent_class):
 
     finally:
         # Clean up the test data after the test
-        workflows_table.remove(Workflow.id == "current_flowchart")
+        tinydb.workflows_table.remove(tinydb.workflow_query.id == test_workflow_id)
 
 
 def test_extract_workflow_metadata(mock_workflow_with_metadata):
@@ -304,11 +304,8 @@ def test_update_workflow_name(mock_workflow, mock_workflow_id):
     assert response.json()["success"] is True
 
     # Get the workflow from TinyDB
-    db_path = os.path.join(os.path.dirname(__file__), "db", "workflows.json")
-    db = TinyDB(db_path)
-    workflows_table = db.table("workflows")
-    Workflow = Query()
-    workflow_data = workflows_table.get(Workflow.id == "test_workflow")
+    tinydb = Database()
+    workflow_data = tinydb.workflows_table.get(tinydb.workflow_query.id == "test_workflow")
     # Check that the name was updated in the database
     assert "metadata" in workflow_data
     assert workflow_data["metadata"]["name"] == new_name

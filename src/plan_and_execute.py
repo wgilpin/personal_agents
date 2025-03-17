@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from tavily import TavilyClient
 from typing_extensions import TypedDict
 
-from workflows import load_flowchart
+from workflows import load_workflow
 
 
 # Default model name for the LLM
@@ -462,20 +462,7 @@ class PlanAndExecuteAgent:
         # Compile it into a LangChain Runnable
         return workflow.compile()
 
-    # Flowchart-related functions
-    async def build_custom_workflow_from_flowchart(self, _):
-        """
-        Build a custom workflow from a flowchart.
-
-        Args:
-            _: The flowchart data as a dictionary
-
-        Returns:
-            A StateGraph workflow
-        """
-        # This is a stub implementation for testing
-        # In a real implementation, this would build a workflow from the flowchart
-        return self.app
+    # workflow-related functions
 
     async def run(self, input_text: str, config: Dict = None):
         """
@@ -564,7 +551,7 @@ class PlanAndExecuteAgent:
 
     def show_graph(self, output_path="graph.png"):
         """
-        Save graph flowchart.
+        Save graph workflow diagram.
 
         Args:
             output_path: Path to save the graph image.

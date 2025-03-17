@@ -6,6 +6,7 @@ import json
 import os
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
+import uuid
 
 import pytest
 from fastapi.testclient import TestClient
@@ -56,15 +57,18 @@ def mock_multi_node_workflow():
 
 
 @pytest.fixture
-def mock_multi_node_flowchart():
-    """Create a mock flowchart file with multiple connected nodes for testing"""
+def mock_multi_node_workflow():
+    """Create a mock workflow file with multiple connected nodes for testing"""
     # Initialize the database
     tinydb = Database()
 
-    # Create a test flowchart with multiple nodes and connections
+    # create a random ID for a workflow
+    test_workflow_id = "test_workflow_" + uuid.uuid4().hex
+
+    # Create a test workflow with multiple nodes and connections
     test_workflow = {
-        "metadata": {"name": "Multi-Node Test Flowchart"},
-        "id": "current_flowchart",
+        "metadata": {"name": "Multi-Node Test workflow"},
+        "id": test_workflow_id,
         "created_at": datetime.now().isoformat(),
         "updated_at": datetime.now().isoformat(),
         "nodes": [
@@ -82,12 +86,12 @@ def mock_multi_node_flowchart():
     }
 
     # Save to workflows table
-    tinydb.workflows_table.upsert(test_workflow, tinydb.workflow_query.id == "current_flowchart")
+    tinydb.workflows_table.upsert(test_workflow, tinydb.workflow_query.id == test_workflow_id)
 
-    yield "current_flowchart"
+    yield test_workflow_id
 
     # Clean up the database after the test
-    tinydb.workflows_table.remove(tinydb.workflow_query.id == "current_flowchart")
+    tinydb.workflows_table.remove(tinydb.workflow_query.id == test_workflow_id)
 
 
 @pytest.mark.asyncio
@@ -159,10 +163,10 @@ async def test_execute_workflow_traverses_nodes(mock_agent_class, mock_multi_nod
 
 @pytest.mark.asyncio
 @patch("api_server.PlanAndExecuteAgent")
-async def test_execute_current_flowchart_traverses_nodes(
-    mock_agent_class, mock_multi_node_flowchart
+async def test_execute_current_workflow_traverses_nodes(
+    mock_agent_class, mock_multi_node_workflow
 ):  # pylint: disable=unused-argument
-    """Test that execute_workflow traverses all nodes in the flowchart"""
+    """Test that execute_workflow traverses all nodes in the workflow"""
     # Create a mock agent instance with different responses for each call
     mock_agent = MagicMock()
 
@@ -191,7 +195,7 @@ async def test_execute_current_flowchart_traverses_nodes(
     request_data = {"input": "Test input"}
 
     # Send a request to the endpoint
-    response = client.post(f"/workflows/{mock_multi_node_flowchart}/execute", json=request_data)
+    response = client.post(f"/workflows/{mock_multi_node_workflow}/execute", json=request_data)
 
     # Check the response
     assert response.status_code == 200

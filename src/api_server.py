@@ -20,7 +20,7 @@ from workflows import (
     list_workflows as get_workflows,
     delete_workflow,
     update_workflow_name as update_workflow_name_func,
-    load_flowchart,
+    load_workflow,
 )
 from workflow_logger import log_workflow_execution
 from view_workflow_logs import list_log_files, parse_log_file, filter_logs
@@ -106,20 +106,20 @@ async def execute_prompt(prompt_input: PromptInput) -> Dict[str, Any]:
         return {"result": "", "error": error_message}
 
 
-class FlowchartResponse(BaseModel):
-    """Response model for the flowchart endpoint."""
+class WorkflowResponse(BaseModel):
+    """Response model for the workflow endpoint."""
 
     success: bool
     message: str
 
 
-@api.post("/workflows", response_model=FlowchartResponse)
+@api.post("/workflows", response_model=WorkflowResponse)
 async def upload_workflow(file: UploadFile = File(...)) -> Dict[str, Any]:
     """
-    Upload a flowchart to be used by the AI server.
+    Upload a workflow to be used by the AI server.
 
     Args:
-        file: The YAML file containing the flowchart data.
+        file: The YAML file containing the workflow data.
 
     Returns:
         A dictionary indicating success or failure.
@@ -190,7 +190,7 @@ async def get_workflow(filename: str) -> Dict[str, Any]:
         workflow_id = filename
 
         # Load the workflow from the database
-        workflow_data = await load_flowchart(workflow_id)
+        workflow_data = await load_workflow(workflow_id)
 
         if not workflow_data:
             raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
@@ -224,7 +224,7 @@ async def execute_workflow(filename: str, request: WorkflowExecuteRequest) -> Di
     workflow_id = filename
 
     # Load the workflow from the database
-    workflow_data = await load_flowchart(workflow_id)
+    workflow_data = await load_workflow(workflow_id)
     if not workflow_data:
         raise HTTPException(
             status_code=404, detail=f"An error occurred while reading workflow: Workflow '{workflow_id}' not found"
@@ -367,11 +367,6 @@ async def delete_workflow_endpoint(filename: str) -> Dict[str, Any]:
         A dictionary indicating success or failure.
     """
     try:
-        # Prevent deletion of current_flowchart
-        if filename == "current_flowchart":
-            # Keep this check for backward compatibility
-            raise HTTPException(status_code=400, detail="Cannot delete the current flowchart")
-
         # Use the workflow module to delete the workflow
         result = delete_workflow(filename)
 
@@ -444,7 +439,7 @@ async def get_latest_workflow_log(filename: str) -> Dict[str, Any]:
         workflow_id = filename
 
         # Load the workflow from the database
-        workflow_data = await load_flowchart(workflow_id)
+        workflow_data = await load_workflow(workflow_id)
         if not workflow_data:
             raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
 

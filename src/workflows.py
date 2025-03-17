@@ -40,15 +40,15 @@ def delete_workflow(filename: str) -> Dict[str, Any]:
         return {"success": False, "message": f"An error occurred while deleting workflow: {str(e)}"}
 
 
-async def load_flowchart(workflow_id: str) -> Optional[Dict[str, Any]]:
+async def load_workflow(workflow_id: str) -> Optional[Dict[str, Any]]:
     """
-    Load a flowchart from a workflow ID.
+    Load a workflow given a workflow ID.
 
     Args:
         workflow_id: ID of the workflow to load
 
     Returns:
-        The flowchart data as a dictionary, or None if it doesn't exist
+        The workflow data as a dictionary, or None if it doesn't exist
     """
     try:
         # Initialize the database
@@ -78,14 +78,14 @@ def save_workflow(content: bytes, workflow_id: str = None) -> Tuple[bool, str, s
         # Parse the content to validate it
         try:
             # Parse the JSON content
-            flowchart_data = json.loads(content)
+            workflow_data = json.loads(content)
 
-            # Validate flowchart name
-            if not flowchart_data.get("metadata", {}).get("name"):
-                return False, "Flowchart must have a name in metadata", ""
+            # Validate workflow name
+            if not workflow_data.get("metadata", {}).get("name"):
+                return False, "workflow must have a name in metadata", ""
 
             # Validate node commands
-            for node in flowchart_data.get("nodes", []):
+            for node in workflow_data.get("nodes", []):
                 # For action nodes, ensure they have a prompt field that's not None
                 if node.get("type") == "act" and ("prompt" not in node or node.get("prompt") is None):
                     # Check if the node has a command
@@ -98,32 +98,32 @@ def save_workflow(content: bytes, workflow_id: str = None) -> Tuple[bool, str, s
         except Exception as e:
             return False, f"Invalid workflow format: {str(e)}", ""
 
-        # Get the flowchart name from metadata
-        flowchart_name = flowchart_data.get("metadata", {}).get("name", "Untitled")
+        # Get the workflow name from metadata
+        workflow_name = workflow_data.get("metadata", {}).get("name", "Untitled")
 
-        # Create a safe ID from the flowchart name if not provided
+        # Create a safe ID from the workflow name if not provided
         if not workflow_id:
-            workflow_id = "".join(c if c.isalnum() else "_" for c in flowchart_name)
+            workflow_id = "".join(c if c.isalnum() else "_" for c in workflow_name)
 
         # Add timestamp and ID to the workflow data
-        flowchart_data["id"] = workflow_id
-        flowchart_data["updated_at"] = datetime.now().isoformat()
+        workflow_data["id"] = workflow_id
+        workflow_data["updated_at"] = datetime.now().isoformat()
 
         # Check if the workflow already exists
         existing = tinydb.workflows_table.get(tinydb.workflow_query.id == workflow_id)
         if existing:
             # Update the existing workflow
-            tinydb.workflows_table.update(flowchart_data, tinydb.workflow_query.id == workflow_id)
+            tinydb.workflows_table.update(workflow_data, tinydb.workflow_query.id == workflow_id)
         else:
             # Insert a new workflow
-            flowchart_data["created_at"] = datetime.now().isoformat()
-            tinydb.workflows_table.insert(flowchart_data)
+            workflow_data["created_at"] = datetime.now().isoformat()
+            tinydb.workflows_table.insert(workflow_data)
 
         # Return the workflow ID
         safe_filename = workflow_id
 
         # Return success
-        return True, f"Flowchart '{flowchart_name}' saved successfully", safe_filename
+        return True, f"workflow '{workflow_name}' saved successfully", safe_filename
 
     except Exception as e:
         return False, f"An error occurred: {str(e)}", ""

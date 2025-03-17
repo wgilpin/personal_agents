@@ -99,32 +99,16 @@ async def test_full_workflow_integration():
 
 @pytest.mark.asyncio
 @patch("plan_and_execute.load_dotenv", lambda: None)  # Skip loading .env file
-async def test_flowchart_workflow():
-    """Test building and running a workflow from a flowchart"""
+async def test_workflow():
+    """Test running a workflow with custom event stream"""
     # Create a PlanAndExecuteAgent
     agent = PlanAndExecuteAgent()
 
-    # Create a mock flowchart
-    mock_flowchart = {
-        "nodes": [
-            {"id": "node1", "type": "act", "content": "Search for AI news"},
-            {"id": "node2", "type": "act", "content": "Extract names"},
-            {"id": "node3", "type": "choice", "content": "Is the list complete?"},
-        ],
-        "connections": [
-            {"from": {"nodeId": "node1"}, "to": {"nodeId": "node2"}},
-            {"from": {"nodeId": "node2"}, "to": {"nodeId": "node3"}},
-        ],
-    }
-
-    # Create a mock StateGraph
-    mock_workflow = MagicMock()
-
-    # Create a custom astream method for the mock workflow
-    async def custom_flowchart_astream(*_, **__):
+    # Create a custom astream method to simulate workflow events
+    async def custom_workflow_astream(*_, **__):
         # Execute first node (act)
         yield {
-            "node1": {
+            "agent": {
                 "past_steps": [
                     (
                         "Search for AI news",
@@ -137,7 +121,7 @@ async def test_flowchart_workflow():
 
         # Execute second node (act)
         yield {
-            "node2": {
+            "agent": {
                 "past_steps": [
                     (
                         "Extract names",
@@ -149,53 +133,15 @@ async def test_flowchart_workflow():
         }
 
         # Execute third node (choice) - satisfied
-        yield {"node3": {"response": json.dumps(["Sam Altman: OpenAI CEO", "Demis Hassabis: DeepMind CEO"])}}
+        yield {"goal_assessor": {"response": json.dumps(["Sam Altman: OpenAI CEO", "Demis Hassabis: DeepMind CEO"])}}
 
         # End
         yield {"__end__": None}
 
-    # Set up the mock workflow
-    mock_workflow.astream = custom_flowchart_astream
-
-    # Mock the build_custom_workflow_from_flowchart method
-    with patch.object(
-        agent,
-        "build_custom_workflow_from_flowchart",
-        AsyncMock(return_value=mock_workflow),
-    ):
-        # Call the method
-        custom_workflow = await agent.build_custom_workflow_from_flowchart(mock_flowchart)
-
-        # Verify that the workflow was built correctly
-        assert custom_workflow is not None
-
-        # Create a modified run method that uses our custom workflow
-        async def modified_run(input_text, config=None):
-            if config is None:
-                config = {"recursion_limit": 50}
-
-            inputs = {"input": input_text}
-            final_result = ""
-            goal_assessment_result = None
-
-            # Run the workflow
-            async for event in custom_workflow.astream(inputs, config=config):
-                for k, v in event.items():
-                    if k != "__end__" and v is not None:
-                        if "past_steps" in v:
-                            for step, result in v["past_steps"]:
-                                print(f"EXECUTED: {step}")
-                                final_result += result + "\n"
-                        if "response" in v:
-                            goal_assessment_result = v["response"]
-
-            return {
-                "final_result": final_result,
-                "goal_assessment_result": goal_assessment_result,
-            }
-
-        # Run the modified run method
-        result = await modified_run("Test input")
+    # Replace the agent's app.astream method with our custom implementation
+    with patch.object(agent.app, "astream", custom_workflow_astream):
+        # Run the agent with a test input
+        result = await agent.run("Test input")
 
         # Verify the results
         assert "final_result" in result
