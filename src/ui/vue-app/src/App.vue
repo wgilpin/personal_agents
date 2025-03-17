@@ -2,9 +2,10 @@
   <div class="app-container">
     <Toolbar 
       @create-node="createNode" 
-      @new-flowchart="createNewFlowchart"
-      @publish-flowchart="publishFlowchart"
+      @new-workflow="createNewWorkflow"
+      @publish-workflow="publishWorkflow"
       @load-workflow-click="showWorkflowModal = true"
+ 
       @start-workflow-click="startWorkflow"
     />
     <div class="instructions">
@@ -75,7 +76,9 @@ export default {
       nextNodeId: 1,
       lastNodePosition: { x: 100, y: 100 },
       showWorkflowModal: false,
-      currentFlowchartName: null, // Track the current flowchart name
+ 
+      currentWorkflowId: null, // Track the current workflow ID
+      currentWorkflowName: null, // Track the current workflow name
       workflowStatusModalVisible: false,
       workflowStatusTitle: '',
       workflowStatusMessage: '',
@@ -88,20 +91,20 @@ export default {
   methods: {
     startWorkflow () {
       // DEBUGGING: Place a breakpoint on this line to debug workflow execution
-      // Only prompt for a name if the flowchart doesn't already have one
-      let flowchartName = this.currentFlowchartName;
-      if (!flowchartName) {
-        flowchartName = prompt('Enter a name for your flowchart before running:', 'My Flowchart');
+      // Only prompt for a name if the workflow doesn't already have one
+      let workflowName = this.currentWorkflowName;
+      if (!workflowName) {
+        workflowName = prompt('Enter a name for your workflow before running:', 'My Workflow');
       
   
         // If the user cancels, return without running
-        if (!flowchartName) {
-          alert('Flowchart name is required to run the workflow.');
+        if (!workflowName) {
+          alert('Workflow name is required to run the workflow.');
           return;
         }
       
         // Store the name for future use
-        this.currentFlowchartName = flowchartName;
+        this.currentWorkflowName = workflowName;
       }
       
       // Show status modal while saving and running
@@ -111,18 +114,18 @@ export default {
       this.workflowStatusIsError = false
       this.workflowStatusIsLoading = true
 
-      // Convert flowchart to YAML format with the provided name
-      const flowchartData = this.convertFlowchartToYaml(flowchartName);
+      // Convert workflow to YAML format with the provided name
+      const workflowData = this.convertWorkflowToYaml(workflowName);
       
       // Create a Blob with the YAML content
-      const blob = new Blob([flowchartData], { type: 'text/yaml' });
+      const blob = new Blob([workflowData], { type: 'text/yaml' });
       
       // Create a FormData object to send the file to the server
       const formData = new FormData();
-      formData.append('file', blob, 'flowchart.yaml');
+      formData.append('file', blob, 'workflow.yaml');
       
-      // First save the current flowchart
-      axios.post('http://localhost:8000/flowchart', formData)
+      // First save the workflow
+      axios.post('http://localhost:8000/workflows', formData)
         .then(() => {
           console.log('Flowchart saved successfully, now executing it directly');
           
@@ -141,10 +144,15 @@ const firstNode = this.nodes.find(node => node.type === 'act')
           this.workflowStatusMessage = 'Please wait while the workflow executes...';
 
           
-          // Execute the current flowchart
+// Generate a workflow ID from the name if we don't have one yet
+          if (!this.currentWorkflowId) {
+            this.currentWorkflowId = workflowName.replace(/\s+/g, '_');
+          }
+          
+              // Execute the workflow
     
-      console.log('Executing flowchart with prompt:', nodePrompt);
-          return axios.post('http://localhost:8000/flowchart/current/execute', {
+      console.log('Executing workflow with prompt:', nodePrompt);
+          return axios.post(`http://localhost:8000/workflows/${this.currentWorkflowId}/execute`, {
             input: nodePrompt
           })
 ;
@@ -178,8 +186,8 @@ const firstNode = this.nodes.find(node => node.type === 'act')
           this.workflowStatusIsLoading = false;
 
           // Fetch execution data to update the pane
-          const workflowFilename = this.currentFlowchartName
-            ? `${this.currentFlowchartName.replace(/\s+/g, '_')}.yaml`
+          const workflowFilename = this.currentWorkflowId
+            ? this.currentWorkflowId
             : null;
           if (workflowFilename) {
             this.fetchWorkflowExecutionData(workflowFilename);
@@ -192,7 +200,7 @@ const firstNode = this.nodes.find(node => node.type === 'act')
           this.workflowStatusIsLoading = false;
         })
         .finally(() => {
-          const workflowFilename = this.currentFlowchartName ? `${this.currentFlowchartName.replace(/\s+/g, '_')}.yaml` : null;
+          const workflowFilename = this.currentWorkflowId || null;
 
           if (workflowFilename) {
             this.fetchWorkflowExecutionData(workflowFilename)
@@ -273,44 +281,48 @@ const firstNode = this.nodes.find(node => node.type === 'act')
       // The actual connection path updates are handled in the FlowchartCanvas component
     },
     
-    createNewFlowchart() {
+    createNewWorkflow() {
       // Reset state
       this.nodes = [];
-      this.currentFlowchartName = null; // Reset the flowchart name
+      this.currentWorkflowId = null; // Reset the workflow ID
+      this.currentWorkflowName = null; // Reset the workflow name
       this.connections = [];
       this.nextNodeId = 1;
       this.lastNodePosition = { x: 100, y: 100 };
     },
     
-    publishFlowchart() {
-      // Prompt the user for a flowchart name
-      const flowchartName = prompt('Enter a name for your flowchart:', this.currentFlowchartName || 'My Flowchart');
+    publishWorkflow() {
+      // Prompt the user for a workflow name
+      const workflowName = prompt('Enter a name for your workflow:', this.currentWorkflowName || 'My Workflow');
       
       // If the user cancels, return
-      if (!flowchartName) {
-        alert('Flowchart name is required.');
+      if (!workflowName) {
+        alert('Workflow name is required.');
         return;
       }
 
       // Store the name for future use
-      this.currentFlowchartName = flowchartName;
+      this.currentWorkflowName = workflowName;
       
       // Convert flowchart to YAML format with the provided name
-      const flowchartData = this.convertFlowchartToYaml(flowchartName);
+      const flowchartData = this.convertWorkflowToYaml(workflowName);
       
       // Log the nodes before conversion
       console.log('Nodes before YAML conversion:', JSON.stringify(this.nodes, null, 2));
       console.log('YAML data being sent to API:', flowchartData);
+
+      // Generate a workflow ID from the name
+      this.currentWorkflowId = workflowName.replace(/\s+/g, '_');
       
       // Create a Blob with the YAML content
       const blob = new Blob([flowchartData], { type: 'text/yaml' });
       
       // Create a FormData object to send the file to the server
       const formData = new FormData();
-      formData.append('file', blob, 'flowchart.yaml');
+      formData.append('file', blob, 'workflow.yaml');
       
       // Send the file to the server
-      axios.post('http://localhost:8000/flowchart', formData)
+      axios.post('http://localhost:8000/workflows', formData)
         .then(response => {
           if (response.data.success) {
             // Show success message
@@ -326,12 +338,12 @@ const firstNode = this.nodes.find(node => node.type === 'act')
         });
     },
     
-    convertFlowchartToYaml(flowchartName) {
-      // Create a structured object for the flowchart
-      const flowchart = {
+    convertWorkflowToYaml(workflowName) {
+      // Create a structured object for the workflow
+      const workflow= {
         // Add metadata section
         metadata: {
-          name: flowchartName || 'Untitled Flowchart', // Use provided name or default
+          name: workflowName || 'Untitled Workflow', // Use provided name or default
         },
         nodes: this.nodes.map(node => {
           // Create a clean node object
@@ -368,7 +380,7 @@ const firstNode = this.nodes.find(node => node.type === 'act')
       };
       
       // Convert to YAML format
-      return this.convertToYaml(flowchart);
+      return this.convertToYaml(workflow);
     },
     
     convertToYaml(obj, indent = 0) {
@@ -411,20 +423,21 @@ const firstNode = this.nodes.find(node => node.type === 'act')
     downloadYamlFile(yamlContent) {
       const downloadLink = document.createElement('a');
       downloadLink.href = URL.createObjectURL(new Blob([yamlContent], { type: 'text/yaml' }));
-      downloadLink.download = 'flowchart.yaml';
+      downloadLink.download = 'workflow.yaml';
       downloadLink.click();
     },
     
     loadWorkflow(workflowData) {
       console.log('Loading workflow:', workflowData);
       
-      const workflowFilename = workflowData.metadata?.name ? `${workflowData.metadata.name.replace(/\s+/g, '_')}.yaml` : null;
-      // Reset the current flowchart
-      this.createNewFlowchart();
+      // Generate workflow ID from metadata name or use the ID directly
+      const workflowId = workflowData.id || (workflowData.metadata?.name ? workflowData.metadata.name.replace(/\s+/g, '_') : null);
+      // Reset the current workflow
+      this.createNewWorkflow();
       
       // Store the workflow name after resetting
       if (workflowData.metadata?.name) {
-        this.currentFlowchartName = workflowData.metadata.name;
+        this.currentWorkflowName = workflowData.metadata.name;
       }
       
       // Preserve metadata if it exists
@@ -432,6 +445,9 @@ const firstNode = this.nodes.find(node => node.type === 'act')
         // We don't need to do anything with the metadata here
         // It will be preserved when saving the workflow
       }
+
+      // Store the workflow ID
+      this.currentWorkflowId = workflowId;
       
       // Load the nodes from the workflow data
       if (workflowData.nodes && Array.isArray(workflowData.nodes)) {
@@ -512,8 +528,8 @@ const firstNode = this.nodes.find(node => node.type === 'act')
       }, 1000); // Increase delay to 1000ms
 
       // Fetch execution data for the loaded workflow
-      if (workflowFilename) {
-        this.fetchWorkflowExecutionData(workflowFilename);
+      if (workflowId) {
+        this.fetchWorkflowExecutionData(workflowId);
       }
     },
     

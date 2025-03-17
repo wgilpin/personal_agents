@@ -57,13 +57,12 @@ def mock_multi_node_workflow():
 
 @pytest.fixture
 def mock_multi_node_flowchart():
-    """Create a mock current flowchart file with multiple connected nodes for testing"""
+    """Create a mock flowchart file with multiple connected nodes for testing"""
     # Initialize the database
     tinydb = Database()
-    current_workflow_table = tinydb.db.table("current_workflow")
 
     # Create a test flowchart with multiple nodes and connections
-    test_flowchart = {
+    test_workflow = {
         "metadata": {"name": "Multi-Node Test Flowchart"},
         "id": "current_flowchart",
         "created_at": datetime.now().isoformat(),
@@ -82,17 +81,12 @@ def mock_multi_node_flowchart():
         ],
     }
 
-    # Save to TinyDB as current workflow
-    current_workflow_table.truncate()
-    current_workflow_table.insert(test_flowchart)
+    # Save to workflows table
+    tinydb.workflows_table.upsert(test_workflow, tinydb.workflow_query.id == "current_flowchart")
 
-    # Also save to workflows table
-    tinydb.workflows_table.upsert(test_flowchart, tinydb.workflow_query.id == "current_flowchart")
-
-    yield
+    yield "current_flowchart"
 
     # Clean up the database after the test
-    current_workflow_table.truncate()
     tinydb.workflows_table.remove(tinydb.workflow_query.id == "current_flowchart")
 
 
@@ -168,7 +162,7 @@ async def test_execute_workflow_traverses_nodes(mock_agent_class, mock_multi_nod
 async def test_execute_current_flowchart_traverses_nodes(
     mock_agent_class, mock_multi_node_flowchart
 ):  # pylint: disable=unused-argument
-    """Test that execute_current_flowchart traverses all nodes in the flowchart"""
+    """Test that execute_workflow traverses all nodes in the flowchart"""
     # Create a mock agent instance with different responses for each call
     mock_agent = MagicMock()
 
@@ -178,7 +172,7 @@ async def test_execute_current_flowchart_traverses_nodes(
         # First node result - this is passed to the second node
         {
             "final_result": "Queen Elizabeth II",
-            "goal_assessment_result": None,
+            "goal_assessment_result": "Queen Elizabeth II",
             "goal_assessment_feedback": None,
             "error": None,
         },
@@ -197,7 +191,7 @@ async def test_execute_current_flowchart_traverses_nodes(
     request_data = {"input": "Test input"}
 
     # Send a request to the endpoint
-    response = client.post("/flowchart/current/execute", json=request_data)
+    response = client.post(f"/workflows/{mock_multi_node_flowchart}/execute", json=request_data)
 
     # Check the response
     assert response.status_code == 200

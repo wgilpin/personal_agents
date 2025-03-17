@@ -19,7 +19,7 @@ from workflows import (
     save_workflow,
     list_workflows as get_workflows,
     delete_workflow,
-    update_workflow_name as update_workflow,
+    update_workflow_name as update_workflow_name_func,
     load_flowchart,
 )
 from workflow_logger import log_workflow_execution
@@ -30,7 +30,7 @@ load_dotenv()
 
 
 # Create FastAPI app
-api = FastAPI(title="Plan and Execute API", description="API for plan_and_execute.py")
+api = FastAPI(title="Workflow API", description="API for workflow execution")
 
 print("Server starting...")
 
@@ -113,8 +113,8 @@ class FlowchartResponse(BaseModel):
     message: str
 
 
-@api.post("/flowchart", response_model=FlowchartResponse)
-async def upload_flowchart(file: UploadFile = File(...)) -> Dict[str, Any]:
+@api.post("/workflows", response_model=FlowchartResponse)
+async def upload_workflow(file: UploadFile = File(...)) -> Dict[str, Any]:
     """
     Upload a flowchart to be used by the AI server.
 
@@ -155,146 +155,6 @@ async def upload_flowchart(file: UploadFile = File(...)) -> Dict[str, Any]:
             status_code=500,
             content={"success": False, "message": f"An error occurred: {str(e)}"},
         )
-
-
-@api.post("/flowchart/current/execute", response_model=WorkflowExecuteResponse)
-async def execute_current_flowchart(request: WorkflowExecuteRequest) -> Dict[str, Any]:
-    """
-    Execute the current flowchart.
-
-    Args:
-        request: The execution request containing input and optional configuration.
-
-    Returns:
-        The results of the flowchart execution.
-    """
-    print("Executing current flowchart...")
-    # Record start time
-    start_time = datetime.datetime.now()
-
-    # Load the current flowchart from the database
-    flowchart_data = await load_flowchart("current_flowchart")
-
-    # Check if the flowchart exists
-    if not flowchart_data:
-        raise HTTPException(status_code=404, detail="Current flowchart not found")
-
-    # Create an agent
-    agent = PlanAndExecuteAgent()
-
-    # Execute the flowchart by traversing the nodes
-    try:
-        # Build a node map for quick lookup
-        node_map = {}
-        if "nodes" in flowchart_data and flowchart_data["nodes"]:
-            for node in flowchart_data["nodes"]:
-                if "id" in node:
-                    node_map[node["id"]] = node
-
-        # Build a connection map to find next nodes
-        connection_map = {}
-        if "connections" in flowchart_data and flowchart_data["connections"]:
-            for connection in flowchart_data["connections"]:
-                from_node_id = connection["from"]["nodeId"]
-                if from_node_id not in connection_map:
-                    connection_map[from_node_id] = []
-                connection_map[from_node_id].append(connection["to"]["nodeId"])
-
-        # Find the first node (one that has no incoming connections)
-        first_node_id = None
-        all_destination_nodes = set()
-        for connection in flowchart_data.get("connections", []):
-            all_destination_nodes.add(connection["to"]["nodeId"])
-
-        for node in flowchart_data.get("nodes", []):
-            if node["id"] not in all_destination_nodes:
-                first_node_id = node["id"]
-                break
-
-        # If no starting node found, use the first node in the list
-        if first_node_id is None and flowchart_data.get("nodes"):
-            first_node_id = flowchart_data["nodes"][0]["id"]
-
-        # Execute each node in sequence, following the connections
-        current_node_id = first_node_id
-        final_result = ""
-        current_state = ""  # Initial state from request
-
-        while current_node_id and current_node_id in node_map:
-            current_node = node_map[current_node_id]
-
-            # Get the prompt from the current node
-            node_prompt = current_node.get("prompt", "")
-
-            # Execute the node with the current state as context
-            prompt_with_context = f"{node_prompt}\nContext from previous steps: {current_state}"
-            result = await agent.run(prompt_with_context, request.config)
-
-            # Update the current state with the result
-            current_state = result.get("final_result", "")
-
-            # Find the next node to execute
-            next_nodes = connection_map.get(current_node_id, [])
-            current_node_id = next_nodes[0] if next_nodes else None
-
-        # Use the final state as the result
-        result = {"final_result": current_state}
-
-        # Extract all relevant fields from the result
-        final_result = result.get("final_result", "")
-        goal_assessment_result = result.get("goal_assessment_result")
-        goal_assessment_feedback = result.get("goal_assessment_feedback")
-        error = result.get("error")
-
-        # Check if final_result is already JSON-formatted
-        try:
-            # Try to parse it as JSON to see if it's valid
-            json.loads(final_result)
-            # If it's valid JSON, return it as is
-            json_formatted = final_result
-        except (json.JSONDecodeError, TypeError):
-            # If it's not valid JSON, wrap it in a JSON structure
-            json_formatted = json.dumps({"response_text": final_result})
-
-        # Record end time
-        end_time = datetime.datetime.now()
-
-        # Get workflow name from metadata
-        workflow_name = flowchart_data.get("metadata", {}).get("name", "Current Flowchart")
-
-        # Log the workflow execution
-        log_workflow_execution(
-            workflow_name=workflow_name, start_time=start_time, end_time=end_time, result=json_formatted
-        )
-
-        return {
-            "final_result": json_formatted,
-            "goal_assessment_result": goal_assessment_result,
-            "goal_assessment_feedback": goal_assessment_feedback,
-            "error": error,
-        }
-    except Exception as e:
-        # Handle exceptions
-        error_message = f"An error occurred while executing flowchart: {str(e)}"
-
-        # Record end time for error case
-        end_time = datetime.datetime.now()
-
-        # Log the failed execution
-        log_workflow_execution(
-            workflow_name=(
-                flowchart_data.get("metadata", {}).get("name", "Current Flowchart")
-                if "flowchart_data" in locals()
-                else "Current Flowchart"
-            ),
-            start_time=start_time if "start_time" in locals() else datetime.datetime.now(),
-            end_time=end_time,
-            result=None,
-            success=False,
-            error=error_message,
-        )
-        print(f"\n\n{error_message}")
-        raise HTTPException(status_code=500, detail=error_message) from e
 
 
 @api.get("/workflows", response_model=List[Dict[str, Any]])
@@ -509,6 +369,7 @@ async def delete_workflow_endpoint(filename: str) -> Dict[str, Any]:
     try:
         # Prevent deletion of current_flowchart
         if filename == "current_flowchart":
+            # Keep this check for backward compatibility
             raise HTTPException(status_code=400, detail="Cannot delete the current flowchart")
 
         # Use the workflow module to delete the workflow
@@ -549,7 +410,7 @@ async def update_workflow_name(filename: str, request: UpdateWorkflowNameRequest
     """
     try:
         # Use the workflow module to update the name
-        result = update_workflow(filename, request.name)
+        result = update_workflow_name_func(filename, request.name)
 
         if not result["success"]:
             raise HTTPException(status_code=500, detail=result["message"])

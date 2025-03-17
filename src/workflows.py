@@ -74,7 +74,6 @@ def save_workflow(content: bytes, workflow_id: str = None) -> Tuple[bool, str, s
     try:
         # Initialize the database
         tinydb = Database()
-        current_workflow_table = tinydb.db.table("current_workflow")
 
         # Parse the content to validate it
         try:
@@ -119,10 +118,6 @@ def save_workflow(content: bytes, workflow_id: str = None) -> Tuple[bool, str, s
             # Insert a new workflow
             flowchart_data["created_at"] = datetime.now().isoformat()
             tinydb.workflows_table.insert(flowchart_data)
-
-        # Also save as current workflow
-        current_workflow_table.truncate()  # Clear the current workflow table
-        current_workflow_table.insert(flowchart_data)
 
         # Return the workflow ID
         safe_filename = workflow_id
@@ -201,12 +196,6 @@ def update_workflow_name(workflow_id: str, new_name: str) -> Dict[str, Any]:
         # Update the workflow in the database
         tinydb.workflows_table.update(workflow, tinydb.workflow_query.id == workflow_id)
 
-        # If this is the current workflow, update it too
-        current_workflow_table = tinydb.db.table("current_workflow")
-        current = current_workflow_table.all()
-        if current and current[0].get("id") == workflow_id:
-            current_workflow_table.update(workflow, tinydb.workflow_query.id == workflow_id)
-
         return {"success": True, "message": "Workflow name updated successfully"}
 
     except Exception as e:
@@ -256,23 +245,3 @@ async def list_workflows() -> List[Dict[str, Any]]:
     except Exception as e:
         # Re-raise the exception to be handled by the caller
         raise e
-
-
-async def load_current_workflow() -> Optional[Dict[str, Any]]:
-    """
-    Load the current workflow from the database.
-
-    Returns:
-        The current workflow data as a dictionary, or None if it doesn't exist
-    """
-    try:
-        # Initialize the database
-        tinydb = Database()
-        current_workflow_table = tinydb.db.table("current_workflow")
-
-        current = current_workflow_table.all()
-        if current:
-            return current[0]
-        return None
-    except Exception:
-        return None

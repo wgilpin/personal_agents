@@ -1,6 +1,6 @@
 <template>
   <div class="toolbar">
-    <h1>Flowchart Builder</h1>
+    <h1>Workflow Builder</h1>
     <div class="node-types">
       <button 
         v-for="nodeType in nodeTypes" 
@@ -15,8 +15,8 @@
     </div>
     <div class="toolbar-actions">
       <button id="load-workflow" @click="$emit('load-workflow-click')" title="Load Workflow"><i class="material-icons">file_open</i></button>
-      <button id="new-flowchart" @click="$emit('new-flowchart')" title="New Workflow"><i class="material-icons">add_box</i></button>
-      <button id="publish-flowchart" @click="$emit('publish-flowchart')" title="Publish Workflow"><i class="material-icons">save</i></button>
+      <button id="new-workflow" @click="$emit('new-workflow')" title="New Workflow"><i class="material-icons">add_box</i></button>
+      <button id="publish-workflow" @click="$emit('publish-workflow')" title="Publish Workflow"><i class="material-icons">save</i></button>
       <button id="start-workflow" @click="$emit('start-workflow-click')" title="Start Workflow"><i class="material-icons">play_arrow</i></button>
   </div>
 </div>
@@ -25,7 +25,7 @@
 <script>
 export default {
   name: 'Toolbar',
-  emits: ['create-node', 'new-flowchart', 'publish-flowchart', 'load-workflow-click', 'start-workflow-click'],
+  emits: ['create-node', 'new-workflow', 'publish-workflow', 'load-workflow-click', 'start-workflow-click'],
   data () {
     return {
       nodeTypes: [
@@ -98,25 +98,25 @@ button:hover {
   color: #f5222d;
 }
 
-#new-flowchart {
+#new-workflow{
   background-color: #faad14;
   color: white;
   border-color: #faad14;
 }
 
-#new-flowchart:hover {
-  color: #9C27B0; /* New Flowchart button hover text color */
+#new-workflow:hover {
+  color: #9C27B0; /* New Workflow button hover text color */
   background-color: #d48806;
 }
 
-#publish-flowchart {
+#publish-workflow{
   background-color: #1890ff;
   color: white;
   border-color: #1890ff;
 }
 
-#publish-flowchart:hover {
-  color: #FF9800; /* Publish Flowchart button hover text color */
+#publish-workflow:hover {
+  color: #FF9800; /* Publish Workflow button hover text color */
   background-color: #096dd9;
 }
 
